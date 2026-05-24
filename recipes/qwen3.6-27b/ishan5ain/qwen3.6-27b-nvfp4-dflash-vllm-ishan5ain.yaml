@@ -1,0 +1,63 @@
+recipe_version: "2"
+model: unsloth/Qwen3.6-27B-NVFP4
+runtime: vllm
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest
+
+metadata:
+  description: |
+    Qwen3.6-27B NVFP4 with DFlash block-diffusion speculative decoding on DGX Spark GB10.
+    Uses a separate lightweight draft model (z-lab/Qwen3.6-27B-DFlash, ~1.7 GB) that
+    generates multiple tokens per forward pass via block diffusion. Unlike built-in MTP
+    (which shares quantized weights), DFlash's draft model is independent — its accuracy
+    is not limited by the target's NVFP4 4-bit quantization.
+
+    NOTE: The Qwen3.6 DFlash draft model is still under training and may require a
+    specific vLLM PR (#40898) for full SWA/diffusion kernel support. If the server
+    fails to start, the container may not have the required vLLM patches.
+  maintainer: "@ishan5ain"
+  model_params: 27B
+  model_dtype: nvfp4
+  kv_dtype: bfloat16
+  quantization: nvfp4
+  quant_bits: 4
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 1
+  pipeline_parallel: 1
+  gpu_memory_utilization: 0.8
+  dtype: bfloat16
+  max_model_len: 32768
+  max_num_batched_tokens: 16384
+  max_num_seqs: 8
+  attention_backend: flash_attn
+  speculative_config: '{"method":"dflash","num_speculative_tokens":15,"model":"z-lab/Qwen3.6-27B-DFlash"}'
+  tool_call_parser: qwen3_coder
+  reasoning_parser: qwen3
+
+env:
+  VLLM_MARLIN_USE_ATOMIC_ADD: "1"
+  VLLM_FORCE_DRAFT_LOAD_FORMAT: "safetensors"
+  VLLM_SKIP_SPEC_STARTUP_DUMMY_RUN: "1"
+
+command: |
+  vllm serve {model} \
+    --host {host} \
+    --port {port} \
+    --tensor-parallel-size {tensor_parallel} \
+    --pipeline-parallel-size {pipeline_parallel} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --dtype {dtype} \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --max-num-seqs {max_num_seqs} \
+    --trust-remote-code \
+    --enable-auto-tool-choice \
+    --tool-call-parser {tool_call_parser} \
+    --reasoning-parser {reasoning_parser} \
+    --attention-backend {attention_backend} \
+    --enforce-eager \
+    --enable-prefix-caching \
+    --speculative-config '{speculative_config}' \
+    --seed 0
