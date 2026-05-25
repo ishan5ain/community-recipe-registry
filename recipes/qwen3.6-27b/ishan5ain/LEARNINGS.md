@@ -325,6 +325,28 @@ Using `--reasoning-parser qwen3` causes the model to output all content into the
 - The `modelopt` NVFP4 format uses SM120 native kernel path — works on SM 121a via `FlashInferCutlassNvFp4LinearKernel`
 - `VLLM_TEST_FORCE_FP8_MARLIN=1` was set but the log shows `CUTLASS` (not Marlin) being used — the env var may not be needed for this model
 
+### Thinking Variant of Recipe 6
+
+**File**: `qwen3.6-27b-nvfp4-mtp-thinking-vllm-ishan5ain.yaml`
+**Status**: ✅ Working — Qwen3.6 official sampling params with preserve_thinking
+
+Changes from Recipe 6:
+- `--served-model-name qwen3.6-nvfp4-mtp-thinking`
+- Client defaults: temp=0.6, top_p=0.95, top_k=20, min_p=0.0 (precise coding)
+- `chat_template_kwargs`: `{"preserve_thinking": true}`
+- Removed `VLLM_TEST_FORCE_FP8_MARLIN` env var (confirmed unused)
+
+| Scenario | tok/s | Tokens | Time |
+|----------|:-----:|:------:|:----:|
+| HTML/JS coding (400 tok) | **8.8** | 400 | 45.0s |
+| Python coding (500 tok) | **15.1** | 500 | 32.9s |
+| Short chat (150 tok) | **15.3** | 87 | 5.7s |
+| Sustained 500 tok | **15.0** | 500 | 33.3s |
+
+**MTP stats**: 76-82% acceptance rate (slightly lower than Recipe 6's 64-91%)
+
+**Note**: HTML/JS is significantly slower (8.8 vs 16.9 tok/s) because thinking mode generates extensive reasoning for creative coding tasks, consuming the token budget. Python/sustained are similar to Recipe 6.
+
 ---
 
 ## Performance Summary
@@ -336,7 +358,8 @@ Using `--reasoning-parser qwen3` causes the model to output all content into the
 | FP8 + MTP | — | — | — | 28.75 GiB | Max raw speed |
 | **llama.cpp DFlash (baseline)** | **17.3** | **25.7** 🏆 | **10.1** | ~16 GiB | Python coding |
 | **llama.cpp DFlash (thinking)** | **17.0** | **21.9** | **11.0** 🏆 | ~16 GiB | Agentic coding w/ thinking |
-| **NVFP4+MTP (modelopt)** 🆕 | **16.9** | **16.1** | **15.0** | 18.65 GiB | Fast NVFP4 via vLLM |
+| **NVFP4+MTP (modelopt)** | **16.9** | **16.1** | **15.0** | 18.65 GiB | Fast NVFP4 via vLLM |
+| **NVFP4+MTP (thinking)** 🆕 | **8.8** | **15.1** | **15.0** | 18.65 GiB | Qwen3.6 official params |
 | NVFP4 (no MTP) | 6.9 | — | — | 12.57 GiB | Long context efficiency |
 | FP8 (no MTP) | — | — | — | 28.75 GiB | Baseline |
 | FP8 + MTP | — | — | — | 28.75 GiB | Max raw speed |
