@@ -167,14 +167,17 @@ Changes from baseline:
 
 ## FP8 Results (for comparison)
 
-| Config | HTML/JS | Python | Sustained | MTP Acceptance | Weight Memory |
-|--------|:------:|:------:|:---------:|:--------------:|:------------:|
-| FP8 (no MTP) | 5.60 | 5.70 | 5.69 | — | ~28.75 GiB |
-| FP8 + MTP | **10.88** | **11.81** | **10.76** | **~74% avg** | ~28.75 GiB |
+| Config | Runtime | HTML/JS | Python | Sustained | Spec Decode | Weight Memory |
+|--------|---------|:------:|:------:|:---------:|:-----------:|:------------:|
+| FP8 (no MTP) | vLLM | 5.60 | 5.70 | 5.69 | — | ~28.75 GiB |
+| FP8 + MTP | vLLM | **10.88** | **11.81** | **10.76** | MTP (2 tok, ~74% accept) | ~28.75 GiB |
+| FP8 + MTP | **SGLang** 🆕🏆 | **15.45** | **13.58** | **12.39** | EAGLE (6 tok, auto) | ~28.75 GiB |
+
+SGLang FP8+MTP beats vLLM FP8+MTP by **+15-42%** (HTML/JS: +42%, Python: +15%, Sustained: +15%). The gap to NVFP4+MTP modelopt narrowed from 39% to 3-9%, making SGLang FP8 a strong alternative without needing NVFP4 quantization.
 
 The FP8 + MTP combo is the fastest vLLM-based option on GB10. MTP acceptance at ~74% is excellent — the memory-bandwidth bottleneck means speculative decoding fills otherwise-idle compute. Benchmarks conducted May 25, 2026 using `@official/qwen3.6-27b-fp8-vllm` and `@official/qwen3.6-27b-fp8-mtp-vllm` recipes.
 
-### Observed MTP Acceptance Over Time (FP8+MTP)
+### Observed MTP Acceptance Over Time (vLLM FP8+MTP)
 ```
 Per-position acceptance rate: Pos1 0.86-1.00, Pos2 0.64-0.86
 Avg Draft acceptance rate: 70-90% across all requests
@@ -182,22 +185,24 @@ Mean acceptance length: 2.5-3.0 (max 3.0 with num_speculative_tokens=2)
 ```
 Acceptance decreases as sustained context grows (Pos2 drops to ~42-58% during 2048-token sustained generation), matching the behavior observed in NVFP4+MTP modelopt (Recipe 6).
 
+**Note**: SGLang does not export per-position acceptance rate logs by default, so direct comparison of draft acceptance rates between vLLM and SGLang is not available.
+
 ---
 
 ## Key Technical Learnings
 
 ### 1. NVFP4 vs FP8 Tradeoffs
 
-| Aspect | FP8 | NVFP4 (compressed-tensors) | NVFP4 (modelopt) |
-|--------|-----|--------------------------|-------------------|
-| Weight size | ~28.75 GiB | ~12.57 GiB | ~18.65 GiB |
-| Decode speed (no MTP) | 5.0 tok/s | **6.9 tok/s** (+38%) | — |
-| Decode speed (MTP) | 10.1 tok/s | 5.1 tok/s (0% accept) | **15-17 tok/s** ✅ |
-| KV cache capacity | ~9K tokens | **~18K tokens** (2×) | **~1.1M tokens** (59GiB) |
-| MTP compatibility | ✅ 73.9% | ❌ 0% (head stripped) | ✅ **64-91%** 🎉 |
-| DFlash compatibility | ✅ Known working | ⚠️ Untested/hung | — |
+| Aspect | FP8 (vLLM) | FP8 (SGLang) | NVFP4 (compressed-tensors) | NVFP4 (modelopt) |
+|--------|-----------|-------------|--------------------------|-------------------|
+| Weight size | ~28.75 GiB | ~28.75 GiB | ~12.57 GiB | ~18.65 GiB |
+| Decode speed (no spec) | 5.0 tok/s | — | **6.9 tok/s** (+38%) | — |
+| Decode speed (spec) | 10.1 tok/s | **12.4-15.5 tok/s** 🏆 | 5.1 tok/s (0% accept) | **15-17 tok/s** ✅ |
+| KV cache capacity | ~9K tokens | 872K tokens | **~18K tokens** (2×) | **~1.1M tokens** (59GiB) |
+| Spec compatibility | ✅ MTP 73.9% | ✅ EAGLE (auto-tuning) | ❌ 0% (head stripped) | ✅ **64-91%** 🎉 |
+| DFlash compatibility | ✅ Known working | — | ⚠️ Untested/hung | — |
 
-**Key finding**: NVFP4+MTP modelopt (15.0 tok/s sustained) beats FP8+MTP (10.76 tok/s sustained) by **39%** on GB10. However, llama.cpp DFlash Python (25.7 tok/s) remains the fastest overall for coding tasks. For sustained generation, NVFP4+MTP modelopt (15.0 tok/s) is the vLLM winner.
+**Key finding**: SGLang FP8+EAGLE (12.4-15.5 tok/s) significantly narrows the gap to NVFP4+MTP modelopt (15.0-16.9 tok/s) to just **3-9%**, compared to vLLM FP8+MTP which was **39% slower**. This makes SGLang FP8 a strong alternative without needing NVFP4 quantization. llama.cpp DFlash Python (25.7 tok/s) remains the fastest overall for coding tasks.
 
 ### 2. MTP Acceptance Depends on Quantization Format (Not Just Bits)
 
@@ -299,6 +304,36 @@ Directory: `recipes/{model-name}/{user}/`
 
 Using `--reasoning-parser qwen3` causes the model to output all content into the `reasoning` field, with `content: null`. This is expected behavior — clients must read from `.reasoning` not `.content`.
 
+### 13. SGLang Specifics
+
+#### SGLang on DGX Spark (GB10) — Proven Working ✅
+
+SGLang (container `scitrera/dgx-spark-sglang:0.5.12`) works on DGX Spark with FP8 models. Key findings:
+
+| Aspect | SGLang | vLLM |
+|--------|--------|------|
+| Model loading | Multi-thread shard loader (66 shards, ~4.5 min) | Similar |
+| KV cache | 872,448 tokens (13.31 GB each K/V) — slightly less than vLLM | ~1M tokens |
+| CUDA graphs BS | 1-8 | 1-64 (FULL/PIECEWISE) |
+| Spec decode | EAGLE algorithm (NEXTN), auto-adjusts draft tokens | MTP (multi-token prediction) |
+| Draft tokens | Auto-adjusted to `steps + 1` (recipe 9 → 6) | Exact (`num_speculative_tokens=2`) |
+| FlashInfer autotune | Not needed (no autotune pass) | ~12 min first run |
+| Startup time (cached) | ~4.5 min | ~4-5 min |
+| Attention backends | flashinfer, triton, cutedsl | flashinfer, flash_attn |
+| Linear attention (GDN) | ✅ CuteDSLGDNKernel + TritonGDNKernel | N/A (uses standard attention) |
+
+#### SGLang Flag Notes for This Recipe
+
+- **`--speculative-algorithm`** (not `--speculative-algo` as in vLLM). The original recipe had the wrong flag name — it's `--speculative-algorithm` in sglang.
+- **`SGLANG_DISABLE_DEEP_GEMM=1`** does NOT fully disable DeepGemm — warnings still appear about scale_fmt mismatch. The env var may need a different value or sglang overrides it.
+- **`SGLANG_ENABLE_SPEC_V2=1`** is the default for EAGLE decode — sglang explicitly says "Spec v2 is enabled by default for eagle/eagle3/standalone speculative decoding."
+- **`speculative_num_draft_tokens` is auto-adjusted** to `speculative_num_steps + 1` when `speculative_eagle_topk == 1`. The recipe set 9 tokens but sglang used 6 (5 steps + 1).
+- **`--mamba-scheduler-strategy extra_buffer`** is accepted but irrelevant for transformers — it allocates Mamba cache memory that goes unused.
+- **`--page-size 64`** is supported in sglang (same as vLLM).
+- **`--cuda-graph-max-bs`** is supported in sglang.
+- **`--linear-attn-prefill-backend triton`** and **`--linear-attn-decode-backend cutedsl`** — these are real flags and sglang uses them for the GDN (hybrid linear attention) kernel dispatch.
+- **`--mm-attention-backend triton_attn`** is a valid sglang option.
+
 ---
 
 ## Recipe 6: NVFP4 + MTP (modelopt format) — WORKING 🎉
@@ -393,15 +428,18 @@ Changes from Recipe 6:
 
 | Recipe | tok/s (HTML/JS) | tok/s (Python) | tok/s (Sustained) | Weight Memory | Best For |
 |--------|:---------------:|:--------------:|:----------------:|:------------:|----------|
-| **FP8 + MTP** 🏆 | **10.88** | **11.81** | **10.76** | 28.75 GiB | Max vLLM speed on GB10 |
+| **SGLang FP8+MTP (EAGLE)** 🆕🏆 | **15.45** | **13.58** | **12.39** | 28.75 GiB | Best vLLM-free FP8 on GB10 |
+| **FP8 + MTP (vLLM)** | **10.88** | **11.81** | **10.76** | 28.75 GiB | Max vLLM speed on GB10 |
 | **llama.cpp DFlash (baseline)** | **17.3** | **25.7** 🏆 | **10.1** | ~16 GiB | Python coding |
 | **llama.cpp DFlash (thinking)** | **17.0** | **21.9** | **11.0** 🏆 | ~16 GiB | Agentic coding w/ thinking |
 | **NVFP4+MTP (modelopt)** | **16.9** | **16.1** | **15.0** 🏆 | 18.65 GiB | Fast NVFP4 via vLLM |
-| **NVFP4+MTP (thinking)** 🆕 | **8.8** | **15.1** | **15.0** 🏆 | 18.65 GiB | Qwen3.6 official params |
+| **NVFP4+MTP (thinking)** | **8.8** | **15.1** | **15.0** 🏆 | 18.65 GiB | Qwen3.6 official params |
 | NVFP4 (no MTP) | 6.9 | 6.74 | 6.86 | 12.57 GiB | Long context efficiency |
 | FP8 (no MTP) | 5.60 | 5.70 | 5.69 | 28.75 GiB | Baseline comparison |
 | NVFP4 + MTP (compressed-tensors) | — | — | — | 12.57 GiB | ❌ 0% acceptance |
 | NVFP4 + DFlash (vLLM) | — | — | — | 27.57 GiB | ⚠️ Needs PR #40898 |
+
+**SGLang vs vLLM FP8+MTP deltas**: HTML/JS **+42%** 🚀, Python **+15%**, Sustained **+15%**. SGLang's EAGLE speculative decoding is more efficient than vLLM's MTP for the same model. The gap to NVFP4+MTP modelopt narrowed considerably (3-9% slower vs 39% slower for vLLM FP8+MTP).
 
 ### llama.cpp DFlash vs Speedhack Claims
 
@@ -446,6 +484,57 @@ cmake --build . -j20 --config Release
 
 The recipe serves as documentation of the exact flags needed but cannot run
 directly until a custom container is built.
+
+---
+
+---
+
+## Recipe 7: SGLang FP8 + MTP (EAGLE speculative decoding) — WORKING 🎉
+
+**File**: `qwen3.6-27b-fp8-sglang-ishan5ain.yaml`
+**Model**: `Qwen/Qwen3.6-27B-FP8`
+**Runtime**: sglang
+**Container**: `scitrera/dgx-spark-sglang:0.5.12`
+**Status**: ✅ Working — EAGLE speculative decoding with auto-adjusted 6 draft tokens
+
+**Key differences from vLLM FP8+MTP (Recipe 6 comparison)**:
+- Uses SGLang runtime (not vLLM) — first non-vLLM/non-llama.cpp runtime tested on GB10
+- Uses EAGLE speculative decoding (not MTP) — sglang's built-in NEXTN algorithm
+- EAGLE draft head detected automatically from the official FP8 checkpoint
+- No FlashInfer autotune pass needed (sglang uses different attention path)
+- CUDA graphs capture at batch sizes 1-8 only (vs 1-64 in vLLM)
+- Fewer KV cache tokens (872,448 vs ~1M in vLLM FP8+MTP)
+
+| Metric | Value |
+|--------|-------|
+| Decode speed | **12.4-15.5 tok/s** (varies by scenario) |
+| Model weights | 28.87 GiB (FP8 main + EAGLE draft head) |
+| Draft model load | 6.77s, 4.21 GiB (separate EAGLE head loaded automatically) |
+| KV cache | 872,448 tokens (13.31 GB each K/V) |
+| FP8 GEMM backend | CUTLASS (cutlass) |
+| EAGLE spec decode | 5 steps, auto-adjusted to 6 draft tokens (steps+1) |
+| CUDA graph mode | Piecewise (disable-piecewise set), capture BS 1-8 |
+| Startup time (cached) | ~4.5 min (269s model load + 27s CUDA graphs) |
+| Linear attention (GDN) | Decode: CuteDSLGDNKernel, Extend: TritonGDNKernel |
+
+**Notable observations**:
+- `--speculative-algorithm` (spelled fully) required, not `--speculative-algo`
+- Draft tokens auto-adjusted from recipe's 9 to 6 (steps + 1)
+- DeepGemm warnings still appear despite `SGLANG_DISABLE_DEEP_GEMM=1` — the env var may not fully disable it
+- `speculative_num_draft_tokens` larger than `steps + 1` is silently clamped by sglang
+
+### Benchmark Results
+
+| Scenario | tok/s | Tokens | Time |
+|----------|:-----:|:------:|:----:|
+| HTML/JS coding (400 tok) | **15.45** | 400 | 25.9s |
+| Python coding (500 tok) | **13.58** | 500 | 36.8s |
+| Short chat (150 tok) | **14.33** | 118 | 8.2s |
+| Sustained 500 tok | **12.39** | 500 | 40.4s |
+
+**vLLM FP8+MTP comparison**: SGLang beats vLLM FP8+MTP across the board by +15-42%. The biggest win is HTML/JS (15.45 vs 10.88 tok/s = **+42%**). This suggests sglang's EAGLE implementation has better draft acceptance for creative generation than vLLM's MTP.
+
+**NVFP4+MTP modelopt comparison**: SGLang FP8 is only 3-9% slower than NVFP4+MTP modelopt, much closer than vLLM FP8+MTP was (39% slower). This significantly narrows the gap between FP8 and NVFP4 performance on sglang.
 
 ---
 

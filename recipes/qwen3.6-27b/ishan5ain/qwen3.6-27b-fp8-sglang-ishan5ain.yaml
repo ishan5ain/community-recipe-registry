@@ -1,0 +1,62 @@
+min_nodes: 1
+model: Qwen/Qwen3.6-27B-FP8
+metadata:
+  description: Qwen3.6-27B-FP8 — native FP8 format (SGLang NEXTN speculation)
+runtime: sglang
+container: scitrera/dgx-spark-sglang:0.5.12
+recipe_version: '2'
+env:
+  SGLANG_DISABLE_DEEP_GEMM: '1'
+  SGLANG_ENABLE_SPEC_V2: '1'
+command: |
+  sglang serve \
+      --model-path {model} \
+      --served-model-name {served_model_name} \
+      --context-length {max_model_len} \
+      --mem-fraction-static {gpu_memory_utilization} \
+      --tp-size {tensor_parallel} \
+      --host {host} \
+      --port {port} \
+      --attention-backend {attention_backend} \
+      --linear-attn-prefill-backend {linear_attn_prefill_backend} \
+      --linear-attn-decode-backend {linear_attn_decode_backend} \
+      --mm-attention-backend {mm_attention_backend} \
+      --kv-cache-dtype {kv_cache_dtype} \
+      --page-size {page_size} \
+      --cuda-graph-max-bs {cuda_graph_max_bs} \
+      --reasoning-parser {reasoning_parser} \
+      --tool-call-parser {tool_call_parser} \
+      --fp8-gemm-backend {fp8_gemm_backend} \
+      --speculative-algorithm {speculative_algo} \
+      --speculative-num-steps {speculative_num_steps} \
+      --speculative-num-draft-tokens {speculative_num_draft_tokens} \
+      --speculative-eagle-topk {speculative_eagle_topk} \
+      --stream-interval {stream_interval} \
+      --mamba-scheduler-strategy {mamba_scheduler_strategy} \
+      --max-running-requests {max_running_requests} \
+      --trust-remote-code
+defaults:
+  fp8_gemm_backend: cutlass
+  speculative_adaptive_flag: ''
+  max_running_requests: 8
+  reasoning_parser: qwen3
+  speculative_eagle_topk: 1
+  mm_attention_backend: triton_attn
+  served_model_name: qwen3.6-27b-mtp
+  linear_attn_decode_backend: cutedsl
+  mamba_scheduler_strategy: extra_buffer
+  max_model_len: 262144
+  host: 0.0.0.0
+  stream_interval: 2
+  speculative_algo: NEXTN
+  kv_cache_dtype: fp8_e4m3
+  gpu_memory_utilization: 0.75
+  tensor_parallel: 1
+  port: 8000
+  cuda_graph_max_bs: 64
+  linear_attn_prefill_backend: triton
+  speculative_num_draft_tokens: 9
+  attention_backend: flashinfer
+  speculative_num_steps: 5
+  tool_call_parser: qwen3_coder
+  page_size: 64

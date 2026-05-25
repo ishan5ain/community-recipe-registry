@@ -54,6 +54,9 @@ defaults:
 
 env:
   VLLM_MARLIN_USE_ATOMIC_ADD: "1"
+  # Persist triton/torch compile caches across container launches
+  # (sparkrun mounts ~/.cache/huggingface -> /cache/huggingface)
+  XDG_CACHE_HOME: /cache/huggingface
 
 command: |
   vllm serve {model} \
