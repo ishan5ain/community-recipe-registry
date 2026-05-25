@@ -13,6 +13,58 @@
 
 ---
 
+## Recipe Index
+
+| # | Recipe | Quant | Spec Decode | Runtime | Status | Peak tok/s | Weight |
+|---|--------|-------|-------------|---------|--------|:----------:|:------:|
+| 1 | NVFP4 (no MTP) | NVFP4 | None | vLLM | ✅ Working | 6.9 | 12.57 GiB |
+| 2 | NVFP4 + MTP | NVFP4 (compressed-tensors) | MTP (2 tok) | vLLM | ❌ 0% accept | 5.1 | 12.57 GiB |
+| 3 | NVFP4 + DFlash (vLLM) | NVFP4 | DFlash (5 layers) | vLLM | ⚠️ Hung at warmup | — | 27.57 GiB |
+| 4 | llama.cpp DFlash (baseline) | Q4_K_M (GGUF) | DFlash | llama.cpp | ✅ Working | **25.7** 🏆 | ~16 GiB |
+| 5 | llama.cpp DFlash (thinking) | Q4_K_M (GGUF) | DFlash | llama.cpp | ✅ Working | 21.9 | ~16 GiB |
+| 6 | NVFP4 + MTP (modelopt) | NVFP4 (modelopt) | MTP (2 tok) | vLLM | ✅ Working | 16.9 | 18.65 GiB |
+| 7 | SGLang FP8 + MTP | FP8 | EAGLE (6 tok) | SGLang | ✅ Working | 15.45 | 28.75 GiB |
+
+---
+
+## Performance Summary
+
+### All Configurations Compared
+
+| Recipe | tok/s (HTML/JS) | tok/s (Python) | tok/s (Sustained) | Weight Memory | Best For |
+|--------|:---------------:|:--------------:|:----------------:|:------------:|----------|
+| **SGLang FP8+MTP (EAGLE)** 🏆 | **15.45** | **13.58** | **12.39** | 28.75 GiB | Best vLLM-free FP8 on GB10 |
+| **FP8 + MTP (vLLM)** | **10.88** | **11.81** | **10.76** | 28.75 GiB | Max vLLM speed on GB10 |
+| **llama.cpp DFlash (baseline)** | **17.3** | **25.7** 🏆 | **10.1** | ~16 GiB | Python coding |
+| **llama.cpp DFlash (thinking)** | **17.0** | **21.9** | **11.0** 🏆 | ~16 GiB | Agentic coding w/ thinking |
+| **NVFP4+MTP (modelopt)** | **16.9** | **16.1** | **15.0** 🏆 | 18.65 GiB | Fast NVFP4 via vLLM |
+| **NVFP4+MTP (thinking)** | **8.8** | **15.1** | **15.0** 🏆 | 18.65 GiB | Qwen3.6 official params |
+| NVFP4 (no MTP) | 6.9 | 6.74 | 6.86 | 12.57 GiB | Long context efficiency |
+| FP8 (no MTP) | 5.60 | 5.70 | 5.69 | 28.75 GiB | Baseline comparison |
+| NVFP4 + MTP (compressed-tensors) | — | — | — | 12.57 GiB | ❌ 0% acceptance |
+| NVFP4 + DFlash (vLLM) | — | — | — | 27.57 GiB | ⚠️ Needs PR #40898 |
+
+**SGLang vs vLLM FP8+MTP deltas**: HTML/JS **+42%** 🚀, Python **+15%**, Sustained **+15%**. SGLang's EAGLE speculative decoding is more efficient than vLLM's MTP for the same model. The gap to NVFP4+MTP modelopt narrowed considerably (3-9% slower vs 39% slower for vLLM FP8+MTP).
+
+### llama.cpp DFlash vs Speedhack Claims
+
+| Scenario | Baseline (no thinking) | Thinking variant | Speedhack claim | Match? |
+|----------|:---------------------:|:----------------:|:---------------:|:------:|
+| HTML/JS coding | 17.3 tok/s | 17.0 tok/s | **38-40 tok/s** | ❌ 2.2× gap |
+| Python coding | **25.7 tok/s** | 21.9 tok/s | **24-25 tok/s** | ✅ Baseline matches |
+| Short chat | ~1.6 tok/s | **12.8 tok/s** | 23-25 tok/s | ⚠️ Thinking improves |
+| Medium context | **11.2 tok/s** | 12.4 tok/s | 20-22 tok/s | ❌ 1.8× gap |
+| Sustained 2048 | 10.1 tok/s | **11.0 tok/s** | 27-29 tok/s | ❌ 2.6× gap |
+
+**Key observations**:
+- Python coding (25.7 tok/s) matches the speedhack claim — DFlash works correctly
+- Sustained and HTML/JS below claims — likely content/prompt/tuning differences
+- Thinking mode adds ~1-3 tok/s overhead but enables reasoning for agentic tasks
+- Token acceptance rate (56-58%) is within speedhack's reported 52-61% range
+- Baseline DFlash Python (25.7 tok/s) is **2.5× faster** than NVFP4 baseline (6.9 tok/s)
+
+---
+
 ## Recipe 1: NVFP4 (no MTP) — Baseline
 
 **File**: `qwen3.6-27b-nvfp4-vllm-ishan5ain.yaml`
@@ -34,7 +86,7 @@
 - `--dtype bfloat16` required for NVFP4 (activations BF16, weights FP4)
 - `--load-format` must NOT be set — NVFP4 auto-detected from config.json
 - KV cache in FP8 (`--kv-cache-dtype fp8`)
-- --reasoning-parser qwen3 causes content: null (output goes to `reasoning` field)
+- `--reasoning-parser qwen3` causes `content: null` (output goes to `reasoning` field)
 
 ---
 
@@ -165,177 +217,6 @@ Changes from baseline:
 
 ---
 
-## FP8 Results (for comparison)
-
-| Config | Runtime | HTML/JS | Python | Sustained | Spec Decode | Weight Memory |
-|--------|---------|:------:|:------:|:---------:|:-----------:|:------------:|
-| FP8 (no MTP) | vLLM | 5.60 | 5.70 | 5.69 | — | ~28.75 GiB |
-| FP8 + MTP | vLLM | **10.88** | **11.81** | **10.76** | MTP (2 tok, ~74% accept) | ~28.75 GiB |
-| FP8 + MTP | **SGLang** 🆕🏆 | **15.45** | **13.58** | **12.39** | EAGLE (6 tok, auto) | ~28.75 GiB |
-
-SGLang FP8+MTP beats vLLM FP8+MTP by **+15-42%** (HTML/JS: +42%, Python: +15%, Sustained: +15%). The gap to NVFP4+MTP modelopt narrowed from 39% to 3-9%, making SGLang FP8 a strong alternative without needing NVFP4 quantization.
-
-The FP8 + MTP combo is the fastest vLLM-based option on GB10. MTP acceptance at ~74% is excellent — the memory-bandwidth bottleneck means speculative decoding fills otherwise-idle compute. Benchmarks conducted May 25, 2026 using `@official/qwen3.6-27b-fp8-vllm` and `@official/qwen3.6-27b-fp8-mtp-vllm` recipes.
-
-### Observed MTP Acceptance Over Time (vLLM FP8+MTP)
-```
-Per-position acceptance rate: Pos1 0.86-1.00, Pos2 0.64-0.86
-Avg Draft acceptance rate: 70-90% across all requests
-Mean acceptance length: 2.5-3.0 (max 3.0 with num_speculative_tokens=2)
-```
-Acceptance decreases as sustained context grows (Pos2 drops to ~42-58% during 2048-token sustained generation), matching the behavior observed in NVFP4+MTP modelopt (Recipe 6).
-
-**Note**: SGLang does not export per-position acceptance rate logs by default, so direct comparison of draft acceptance rates between vLLM and SGLang is not available.
-
----
-
-## Key Technical Learnings
-
-### 1. NVFP4 vs FP8 Tradeoffs
-
-| Aspect | FP8 (vLLM) | FP8 (SGLang) | NVFP4 (compressed-tensors) | NVFP4 (modelopt) |
-|--------|-----------|-------------|--------------------------|-------------------|
-| Weight size | ~28.75 GiB | ~28.75 GiB | ~12.57 GiB | ~18.65 GiB |
-| Decode speed (no spec) | 5.0 tok/s | — | **6.9 tok/s** (+38%) | — |
-| Decode speed (spec) | 10.1 tok/s | **12.4-15.5 tok/s** 🏆 | 5.1 tok/s (0% accept) | **15-17 tok/s** ✅ |
-| KV cache capacity | ~9K tokens | 872K tokens | **~18K tokens** (2×) | **~1.1M tokens** (59GiB) |
-| Spec compatibility | ✅ MTP 73.9% | ✅ EAGLE (auto-tuning) | ❌ 0% (head stripped) | ✅ **64-91%** 🎉 |
-| DFlash compatibility | ✅ Known working | — | ⚠️ Untested/hung | — |
-
-**Key finding**: SGLang FP8+EAGLE (12.4-15.5 tok/s) significantly narrows the gap to NVFP4+MTP modelopt (15.0-16.9 tok/s) to just **3-9%**, compared to vLLM FP8+MTP which was **39% slower**. This makes SGLang FP8 a strong alternative without needing NVFP4 quantization. llama.cpp DFlash Python (25.7 tok/s) remains the fastest overall for coding tasks.
-
-### 2. MTP Acceptance Depends on Quantization Format (Not Just Bits)
-
-Our NVFP4+MTP failure (0% acceptance) was caused by the **quantization format**, not the bit depth:
-
-| Quant format | MTP head preservation | MTP works? | Example model |
-|---|---|---|---|
-| `compressed-tensors` | ❌ **Dropped during export** | ❌ 0% acceptance | `unsloth/Qwen3.6-27B-NVFP4` |
-| `modelopt` (ModelOpt) | ✅ **Restored in bf16** | ✅ **64-91% on GB10** 🎉 | `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP` |
-| Unquantized (bf16) | ✅ Intact | ✅ 73.9% (FP8+MTP) | `Qwen/Qwen3.6-27B` (FP8 quant) |
-
-**Root cause**: The `compressed-tensors` export path strips all non-essential weights including the MTP heads. The `modelopt` export path preserves the MTP head in bf16 while keeping the main weights in NVFP4. This is a toolchain issue, not a fundamental precision limitation.
-
-### 3. Quantization Format: `modelopt` vs `compressed-tensors`
-
-For NVFP4 quantization on Blackwell (GB10), there are two competing formats:
-
-| Aspect | `modelopt` (NVIDIA ModelOpt) | `compressed-tensors` |
-|---|---|---|
-| MTP head | ✅ Preserved in bf16 | ❌ Stripped |
-| Vision tower | ✅ Preserved | ✅ Preserved (in VLM models) |
-| vLLM backend | SM120 native path | compressed-tensors loader |
-| Known good at | ✅ GB10 (sm_121a) — tested working via `FlashInferCutlassNvFp4LinearKernel` | GB10 (sm_121a) tested |
-| Startup speed | Faster (native path) | Slower (detour) |
-| MTP on GB10 | ✅ Working — **64-91% acceptance rate** 🎉 | ❌ 0% acceptance (MTP head stripped) |
-| Models | `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP`, `sakamakismile/Huihui-Qwen3.6-27B-abliterated-NVFP4-MTP` | `unsloth/Qwen3.6-27B-NVFP4` |
-
-**The `modelopt` format FIXES NVFP4+MTP on GB10** ✅ — The SM120 native kernel path works via `FlashInferCutlassNvFp4LinearKernel` on SM 121a. The `VLLM_TEST_FORCE_FP8_MARLIN=1` env var was set but not used (CUTLASS path was selected).
-
-### 4. `VLLM_TEST_FORCE_FP8_MARLIN` Is Not Needed on Current vLLM
-
-The `VLLM_TEST_FORCE_FP8_MARLIN=1` env var was carried over from Recipe 1 (baseline) and earlier community guidance for NVFP4 on SM 121a. With the current vLLM nightly (`0.21.1rc1`), the NVFP4 backend automatically selects `FlashInferCutlassNvFp4LinearKernel` without it. The thinking variant confirmed this by running cleanly without the env var.
-
-**Recommendation**: Omit `VLLM_TEST_FORCE_FP8_MARLIN` in new recipes. Only add if specific CUDA errors occur with the CUTLASS path.
-
-### 5. Thinking Mode Overhead Varies by Task Type
-
-Enabling thinking mode (`--reasoning-parser qwen3`) adds overhead that depends heavily on the task:
-
-| Task type | Throughput impact | Reason |
-|---|---|---|
-| Creative/generative (HTML/JS) | **-48%** (16.9→8.8 tok/s) | Model spends many tokens reasoning about design choices before generating |
-| Coding (Python, algorithms) | **~-6%** (16.1→15.1 tok/s) | Minimal reasoning needed for straightforward code tasks |
-| Factual Q&A | **~same** | Short reasoning, quick answer |
-| Sustained generation | **~same** | Once context is established, thinking overhead is amortized |
-
-**Tradeoff**: Thinking mode enables `reasoning_content` in responses and improves output quality for complex tasks, but at a throughput cost that varies significantly by content type.
-
-### 6. `--language-model-only` Is Required for Text-Only VLM-Derived Models
-
-Models like `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP` have a `config.json` that reports `image-text-to-text` even though the vision tower is stripped. Without `--language-model-only`, vLLM tries to load a multimodal processor and crashes with:
-
-```
-OSError: Can't load image processor for ... missing preprocessor_config.json
-```
-
-**Fix**: Always include `--language-model-only` when serving models that are based on a VLM architecture but are text-only.
-
-### 7. DFlash Support is Early
-
-- Qwen3.6 DFlash: "still under training" — needs vLLM PR #40898
-- Qwen3.5 DFlash: mature and working (see banana_baeee's recipe)
-- llama.cpp DFlash (phuongncn speedhack fork): proven on GB10, 38-40 tok/s (claimed)
-- llama.cpp DFlash tested: Python coding matches claim (25.7 tok/s); HTML/JS and sustained below (see Recipe 4/5)
-
-### 8. GB10-Specific Observations
-
-- **Memory bandwidth bottleneck**: 273 GB/s LPDDR5X — decode speed limited by weight reading, not compute
-- **FlashInfer autotuning**: 4 passes × 23 profiles each, ~12 min first run. Cached on disk for subsequent runs.
-- **torch.compile**: ~2 min first run (AOT cached). With `--enforce-eager`, skipped entirely.
-- **CUDA graphs**: FULL_AND_PIECEWISE mode. With MTP, downgrades to PIECEWISE.
-- **"Not enough SMs"**: GB10 has 48 SMs, below vLLM's threshold for max_autotune_gemm.
-- **Unified memory**: `nvidia-smi` shows "Not Supported" for GPU memory query. Memory is shared CPU+GPU.
-
-### 9. Sparkrun Gotchas
-
-- `sparkrun stop <container_name>` does NOT work — it expects a **recipe name**, not a container name
-- `sparkrun stop --all` needs SSH host keys for localhost (`ssh-keyscan -H 127.0.0.1 >> ~/.ssh/known_hosts`)
-- Use `docker kill` as fallback when sparkrun fails
-- Auto-restart: sparkrun respawns containers when killed — stop via sparkrun recipe name or `docker kill && docker rm`
-- Container network mode: `host` (ports exposed directly, not mapped)
-
-### 10. Recipe Versioning
-
-Community recipes use `recipe_version: "2"`. File naming convention:
-`{model}-{quant}-{mtp/dflash}-{runtime}-{user}.yaml`
-Directory: `recipes/{model-name}/{user}/`
-
-### 11. FlashInfer vs Flash Attention
-
-| Aspect | FlashInfer | Flash Attention |
-|--------|------------|-----------------|
-| Used for | vLLM default | DFlash (vLLM) / llama.cpp |
-| FP8 KV cache | ✅ Supported | ❌ Not supported |
-| NVFP4 GEMM | ✅ Custom kernel | ⚠️ Limited |
-| DFlash support | ❌ | ✅ |
-
-### 12. Content vs Reasoning Field
-
-Using `--reasoning-parser qwen3` causes the model to output all content into the `reasoning` field, with `content: null`. This is expected behavior — clients must read from `.reasoning` not `.content`.
-
-### 13. SGLang Specifics
-
-#### SGLang on DGX Spark (GB10) — Proven Working ✅
-
-SGLang (container `scitrera/dgx-spark-sglang:0.5.12`) works on DGX Spark with FP8 models. Key findings:
-
-| Aspect | SGLang | vLLM |
-|--------|--------|------|
-| Model loading | Multi-thread shard loader (66 shards, ~4.5 min) | Similar |
-| KV cache | 872,448 tokens (13.31 GB each K/V) — slightly less than vLLM | ~1M tokens |
-| CUDA graphs BS | 1-8 | 1-64 (FULL/PIECEWISE) |
-| Spec decode | EAGLE algorithm (NEXTN), auto-adjusts draft tokens | MTP (multi-token prediction) |
-| Draft tokens | Auto-adjusted to `steps + 1` (recipe 9 → 6) | Exact (`num_speculative_tokens=2`) |
-| FlashInfer autotune | Not needed (no autotune pass) | ~12 min first run |
-| Startup time (cached) | ~4.5 min | ~4-5 min |
-| Attention backends | flashinfer, triton, cutedsl | flashinfer, flash_attn |
-| Linear attention (GDN) | ✅ CuteDSLGDNKernel + TritonGDNKernel | N/A (uses standard attention) |
-
-#### SGLang Flag Notes for This Recipe
-
-- **`--speculative-algorithm`** (not `--speculative-algo` as in vLLM). The original recipe had the wrong flag name — it's `--speculative-algorithm` in sglang.
-- **`SGLANG_DISABLE_DEEP_GEMM=1`** does NOT fully disable DeepGemm — warnings still appear about scale_fmt mismatch. The env var may need a different value or sglang overrides it.
-- **`SGLANG_ENABLE_SPEC_V2=1`** is the default for EAGLE decode — sglang explicitly says "Spec v2 is enabled by default for eagle/eagle3/standalone speculative decoding."
-- **`speculative_num_draft_tokens` is auto-adjusted** to `speculative_num_steps + 1` when `speculative_eagle_topk == 1`. The recipe set 9 tokens but sglang used 6 (5 steps + 1).
-- **`--mamba-scheduler-strategy extra_buffer`** is accepted but irrelevant for transformers — it allocates Mamba cache memory that goes unused.
-- **`--page-size 64`** is supported in sglang (same as vLLM).
-- **`--cuda-graph-max-bs`** is supported in sglang.
-- **`--linear-attn-prefill-backend triton`** and **`--linear-attn-decode-backend cutedsl`** — these are real flags and sglang uses them for the GDN (hybrid linear attention) kernel dispatch.
-- **`--mm-attention-backend triton_attn`** is a valid sglang option.
-
----
-
 ## Recipe 6: NVFP4 + MTP (modelopt format) — WORKING 🎉
 
 **File**: `qwen3.6-27b-nvfp4-mtp-modelopt-vllm-ishan5ain.yaml`
@@ -422,73 +303,6 @@ Changes from Recipe 6:
 
 ---
 
-## Performance Summary
-
-### All Configurations Compared
-
-| Recipe | tok/s (HTML/JS) | tok/s (Python) | tok/s (Sustained) | Weight Memory | Best For |
-|--------|:---------------:|:--------------:|:----------------:|:------------:|----------|
-| **SGLang FP8+MTP (EAGLE)** 🆕🏆 | **15.45** | **13.58** | **12.39** | 28.75 GiB | Best vLLM-free FP8 on GB10 |
-| **FP8 + MTP (vLLM)** | **10.88** | **11.81** | **10.76** | 28.75 GiB | Max vLLM speed on GB10 |
-| **llama.cpp DFlash (baseline)** | **17.3** | **25.7** 🏆 | **10.1** | ~16 GiB | Python coding |
-| **llama.cpp DFlash (thinking)** | **17.0** | **21.9** | **11.0** 🏆 | ~16 GiB | Agentic coding w/ thinking |
-| **NVFP4+MTP (modelopt)** | **16.9** | **16.1** | **15.0** 🏆 | 18.65 GiB | Fast NVFP4 via vLLM |
-| **NVFP4+MTP (thinking)** | **8.8** | **15.1** | **15.0** 🏆 | 18.65 GiB | Qwen3.6 official params |
-| NVFP4 (no MTP) | 6.9 | 6.74 | 6.86 | 12.57 GiB | Long context efficiency |
-| FP8 (no MTP) | 5.60 | 5.70 | 5.69 | 28.75 GiB | Baseline comparison |
-| NVFP4 + MTP (compressed-tensors) | — | — | — | 12.57 GiB | ❌ 0% acceptance |
-| NVFP4 + DFlash (vLLM) | — | — | — | 27.57 GiB | ⚠️ Needs PR #40898 |
-
-**SGLang vs vLLM FP8+MTP deltas**: HTML/JS **+42%** 🚀, Python **+15%**, Sustained **+15%**. SGLang's EAGLE speculative decoding is more efficient than vLLM's MTP for the same model. The gap to NVFP4+MTP modelopt narrowed considerably (3-9% slower vs 39% slower for vLLM FP8+MTP).
-
-### llama.cpp DFlash vs Speedhack Claims
-
-| Scenario | Baseline (no thinking) | Thinking variant | Speedhack claim | Match? |
-|----------|:---------------------:|:----------------:|:---------------:|:------:|
-| HTML/JS coding | 17.3 tok/s | 17.0 tok/s | **38-40 tok/s** | ❌ 2.2× gap |
-| Python coding | **25.7 tok/s** | 21.9 tok/s | **24-25 tok/s** | ✅ Baseline matches |
-| Short chat | ~1.6 tok/s | **12.8 tok/s** | 23-25 tok/s | ⚠️ Thinking improves |
-| Medium context | **11.2 tok/s** | 12.4 tok/s | 20-22 tok/s | ❌ 1.8× gap |
-| Sustained 2048 | 10.1 tok/s | **11.0 tok/s** | 27-29 tok/s | ❌ 2.6× gap |
-
-**Key observations**:
-- Python coding (25.7 tok/s) matches the speedhack claim — DFlash works correctly
-- Sustained and HTML/JS below claims — likely content/prompt/tuning differences
-- Thinking mode adds ~1-3 tok/s overhead but enables reasoning for agentic tasks
-- Token acceptance rate (56-58%) is within speedhack's reported 52-61% range
-- Baseline DFlash Python (25.7 tok/s) is **2.5× faster** than NVFP4 baseline (6.9 tok/s)
-
----
-
-### 13. Llama.cpp Stock Container vs DFlash Fork
-
-The stock `ghcr.io/spark-arena/dgx-llama-cpp:latest` container does NOT support DFlash:
-
-```
-error: invalid argument: --draft-context-size
-```
-
-No DFlash flags (`--spec-type`, `--spec-dflash-default`, `--draft-context-size`,
-`-ctk`, `-ctv`, etc.) are recognized by the stock `llama-server`. The DFlash
-support requires building the spiritbuun/phuongncn custom fork from source with:
-
-```bash
-git clone https://github.com/phuongncn/qwen3.6-27b-speedhack-gx10-dgx-spark.git
-cd qwen3.6-27b-speedhack-gx10-dgx-spark
-mkdir build && cd build
-cmake .. -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120 -DGGML_RPC=OFF
-cmake --build . -j20 --config Release
-
-# Results: ~38-40 tok/s (per repo README, untested by @ishan5ain)
-```
-
-The recipe serves as documentation of the exact flags needed but cannot run
-directly until a custom container is built.
-
----
-
----
-
 ## Recipe 7: SGLang FP8 + MTP (EAGLE speculative decoding) — WORKING 🎉
 
 **File**: `qwen3.6-27b-fp8-sglang-ishan5ain.yaml`
@@ -517,12 +331,6 @@ directly until a custom container is built.
 | Startup time (cached) | ~4.5 min (269s model load + 27s CUDA graphs) |
 | Linear attention (GDN) | Decode: CuteDSLGDNKernel, Extend: TritonGDNKernel |
 
-**Notable observations**:
-- `--speculative-algorithm` (spelled fully) required, not `--speculative-algo`
-- Draft tokens auto-adjusted from recipe's 9 to 6 (steps + 1)
-- DeepGemm warnings still appear despite `SGLANG_DISABLE_DEEP_GEMM=1` — the env var may not fully disable it
-- `speculative_num_draft_tokens` larger than `steps + 1` is silently clamped by sglang
-
 ### Benchmark Results
 
 | Scenario | tok/s | Tokens | Time |
@@ -535,6 +343,229 @@ directly until a custom container is built.
 **vLLM FP8+MTP comparison**: SGLang beats vLLM FP8+MTP across the board by +15-42%. The biggest win is HTML/JS (15.45 vs 10.88 tok/s = **+42%**). This suggests sglang's EAGLE implementation has better draft acceptance for creative generation than vLLM's MTP.
 
 **NVFP4+MTP modelopt comparison**: SGLang FP8 is only 3-9% slower than NVFP4+MTP modelopt, much closer than vLLM FP8+MTP was (39% slower). This significantly narrows the gap between FP8 and NVFP4 performance on sglang.
+
+### Accompanying vLLM FP8+MTP Results
+
+For context, the FP8 + MTP combo with vLLM was also benchmarked alongside Recipe 7. These results use `@official/qwen3.6-27b-fp8-vllm` and `@official/qwen3.6-27b-fp8-mtp-vllm` recipes (conducted May 25, 2026):
+
+| Config | Runtime | HTML/JS | Python | Sustained | Spec Decode | Weight Memory |
+|--------|---------|:------:|:------:|:---------:|:-----------:|:------------:|
+| FP8 (no MTP) | vLLM | 5.60 | 5.70 | 5.69 | — | ~28.75 GiB |
+| FP8 + MTP | vLLM | **10.88** | **11.81** | **10.76** | MTP (2 tok, ~74% accept) | ~28.75 GiB |
+| FP8 + MTP | **SGLang** 🏆 | **15.45** | **13.58** | **12.39** | EAGLE (6 tok, auto) | ~28.75 GiB |
+
+MTP acceptance at ~74% is excellent — the memory-bandwidth bottleneck means speculative decoding fills otherwise-idle compute.
+
+### Notable Observations
+
+- `--speculative-algorithm` (spelled fully) required, not `--speculative-algo` as in vLLM
+- Draft tokens auto-adjusted from recipe's 9 to 6 (steps + 1)
+- DeepGemm warnings still appear despite `SGLANG_DISABLE_DEEP_GEMM=1` — the env var may not fully disable it
+- `speculative_num_draft_tokens` larger than `steps + 1` is silently clamped by sglang
+- `SGLANG_ENABLE_SPEC_V2=1` is the default for EAGLE decode — sglang explicitly says "Spec v2 is enabled by default for eagle/eagle3/standalone speculative decoding."
+- `--mamba-scheduler-strategy extra_buffer` is accepted but irrelevant for transformers — it allocates Mamba cache memory that goes unused
+- `--page-size 64`, `--cuda-graph-max-bs` are supported in sglang (same as vLLM)
+- `--linear-attn-prefill-backend triton` and `--linear-attn-decode-backend cutedsl` are real flags used for GDN (hybrid linear attention) kernel dispatch
+- `--mm-attention-backend triton_attn` is a valid sglang option
+
+---
+
+## Key Technical Learnings
+
+### Quantization & Formats
+
+#### NVFP4 vs FP8 Tradeoffs
+
+| Aspect | FP8 (vLLM) | FP8 (SGLang) | NVFP4 (compressed-tensors) | NVFP4 (modelopt) |
+|--------|-----------|-------------|--------------------------|-------------------|
+| Weight size | ~28.75 GiB | ~28.75 GiB | ~12.57 GiB | ~18.65 GiB |
+| Decode speed (no spec) | 5.0 tok/s | — | **6.9 tok/s** (+38%) | — |
+| Decode speed (spec) | 10.1 tok/s | **12.4-15.5 tok/s** 🏆 | 5.1 tok/s (0% accept) | **15-17 tok/s** ✅ |
+| KV cache capacity | ~9K tokens | 872K tokens | **~18K tokens** (2×) | **~1.1M tokens** (59GiB) |
+| Spec compatibility | ✅ MTP 73.9% | ✅ EAGLE (auto-tuning) | ❌ 0% (head stripped) | ✅ **64-91%** 🎉 |
+| DFlash compatibility | ✅ Known working | — | ⚠️ Untested/hung | — |
+
+**Key finding**: SGLang FP8+EAGLE (12.4-15.5 tok/s) significantly narrows the gap to NVFP4+MTP modelopt (15.0-16.9 tok/s) to just **3-9%**, compared to vLLM FP8+MTP which was **39% slower**. This makes SGLang FP8 a strong alternative without needing NVFP4 quantization. llama.cpp DFlash Python (25.7 tok/s) remains the fastest overall for coding tasks.
+
+#### MTP Acceptance Depends on Quantization Format (Not Just Bits)
+
+Our NVFP4+MTP failure (0% acceptance) was caused by the **quantization format**, not the bit depth:
+
+| Quant format | MTP head preservation | MTP works? | Example model |
+|---|---|---|---|
+| `compressed-tensors` | ❌ **Dropped during export** | ❌ 0% acceptance | `unsloth/Qwen3.6-27B-NVFP4` |
+| `modelopt` (ModelOpt) | ✅ **Restored in bf16** | ✅ **64-91% on GB10** 🎉 | `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP` |
+| Unquantized (bf16) | ✅ Intact | ✅ 73.9% (FP8+MTP) | `Qwen/Qwen3.6-27B` (FP8 quant) |
+
+**Root cause**: The `compressed-tensors` export path strips all non-essential weights including the MTP heads. The `modelopt` export path preserves the MTP head in bf16 while keeping the main weights in NVFP4. This is a toolchain issue, not a fundamental precision limitation.
+
+#### Quantization Format: `modelopt` vs `compressed-tensors`
+
+For NVFP4 quantization on Blackwell (GB10), there are two competing formats:
+
+| Aspect | `modelopt` (NVIDIA ModelOpt) | `compressed-tensors` |
+|---|---|---|
+| MTP head | ✅ Preserved in bf16 | ❌ Stripped |
+| Vision tower | ✅ Preserved | ✅ Preserved (in VLM models) |
+| vLLM backend | SM120 native path | compressed-tensors loader |
+| Known good at | ✅ GB10 (sm_121a) — tested working via `FlashInferCutlassNvFp4LinearKernel` | GB10 (sm_121a) tested |
+| Startup speed | Faster (native path) | Slower (detour) |
+| MTP on GB10 | ✅ Working — **64-91% acceptance rate** 🎉 | ❌ 0% acceptance (MTP head stripped) |
+| Models | `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP`, `sakamakismile/Huihui-Qwen3.6-27B-abliterated-NVFP4-MTP` | `unsloth/Qwen3.6-27B-NVFP4` |
+
+**The `modelopt` format FIXES NVFP4+MTP on GB10** ✅ — The SM120 native kernel path works via `FlashInferCutlassNvFp4LinearKernel` on SM 121a. The `VLLM_TEST_FORCE_FP8_MARLIN=1` env var was set but not used (CUTLASS path was selected).
+
+---
+
+### Speculative Decoding
+
+#### MTP Acceptance Behavior Over Time
+
+MTP acceptance decreases as sustained context grows — a pattern observed consistently across both NVFP4+MTP modelopt (Recipe 6) and FP8+MTP vLLM (Recipe 7's accompanying data):
+
+**NVFP4+MTP modelopt (Recipe 6)**:
+```
+1st request (fresh):  94.4%, 88.9% → 91.7% avg
+2nd request:          90.0%, 83.3% → 86.7% avg
+3rd request:          91.2%, 86.0% → 88.6% avg
+4th request (sustained): 86.4%, 67.8% → 77.1% avg
+5th request (sustained): 75.0%, 53.3% → 64.2% avg
+```
+
+**vLLM FP8+MTP**:
+```
+Per-position acceptance rate: Pos1 0.86-1.00, Pos2 0.64-0.86
+Avg Draft acceptance rate: 70-90% across all requests
+Mean acceptance length: 2.5-3.0 (max 3.0 with num_speculative_tokens=2)
+```
+
+Acceptance decreases as sustained context grows (Pos2 drops to ~42-58% during 2048-token sustained generation). The second-position dropoff is expected — vLLM warns that `num_speculative_tokens > 1` runs multiple forward passes on the same MTP layer, reducing draft quality for later positions.
+
+**Note**: SGLang does not export per-position acceptance rate logs by default, so direct comparison of draft acceptance rates between vLLM and SGLang is not available.
+
+#### DFlash Support is Early
+
+- Qwen3.6 DFlash: "still under training" — needs vLLM PR #40898
+- Qwen3.5 DFlash: mature and working (see banana_baeee's recipe)
+- llama.cpp DFlash (phuongncn speedhack fork): proven on GB10, 38-40 tok/s (claimed)
+- llama.cpp DFlash tested: Python coding matches claim (25.7 tok/s); HTML/JS and sustained below (see Recipe 4/5)
+
+#### FlashInfer vs Flash Attention
+
+| Aspect | FlashInfer | Flash Attention |
+|--------|------------|-----------------|
+| Used for | vLLM default | DFlash (vLLM) / llama.cpp |
+| FP8 KV cache | ✅ Supported | ❌ Not supported |
+| NVFP4 GEMM | ✅ Custom kernel | ⚠️ Limited |
+| DFlash support | ❌ | ✅ |
+
+---
+
+### Runtime Configuration
+
+#### `VLLM_TEST_FORCE_FP8_MARLIN` Is Not Needed on Current vLLM
+
+The `VLLM_TEST_FORCE_FP8_MARLIN=1` env var was carried over from Recipe 1 (baseline) and earlier community guidance for NVFP4 on SM 121a. With the current vLLM nightly (`0.21.1rc1`), the NVFP4 backend automatically selects `FlashInferCutlassNvFp4LinearKernel` without it. The thinking variant confirmed this by running cleanly without the env var.
+
+**Recommendation**: Omit `VLLM_TEST_FORCE_FP8_MARLIN` in new recipes. Only add if specific CUDA errors occur with the CUTLASS path.
+
+#### llama.cpp Stock Container vs DFlash Fork
+
+The stock `ghcr.io/spark-arena/dgx-llama-cpp:latest` container does NOT support DFlash:
+
+```
+error: invalid argument: --draft-context-size
+```
+
+No DFlash flags (`--spec-type`, `--spec-dflash-default`, `--draft-context-size`,
+`-ctk`, `-ctv`, etc.) are recognized by the stock `llama-server`. The DFlash
+support requires building the spiritbuun/phuongncn custom fork from source with:
+
+```bash
+git clone https://github.com/phuongncn/qwen3.6-27b-speedhack-gx10-dgx-spark.git
+cd qwen3.6-27b-speedhack-gx10-dgx-spark
+mkdir build && cd build
+cmake .. -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120 -DGGML_RPC=OFF
+cmake --build . -j20 --config Release
+
+# Results: ~38-40 tok/s (per repo README, untested by @ishan5ain)
+```
+
+The recipe serves as documentation of the exact flags needed but cannot run directly until a custom container is built.
+
+#### Sparkrun Gotchas
+
+- `sparkrun stop <container_name>` does NOT work — it expects a **recipe name**, not a container name
+- `sparkrun stop --all` needs SSH host keys for localhost (`ssh-keyscan -H 127.0.0.1 >> ~/.ssh/known_hosts`)
+- Use `docker kill` as fallback when sparkrun fails
+- Auto-restart: sparkrun respawns containers when killed — stop via sparkrun recipe name or `docker kill && docker rm`
+- Container network mode: `host` (ports exposed directly, not mapped)
+
+#### Recipe Versioning
+
+Community recipes use `recipe_version: "2"`. File naming convention:
+`{model}-{quant}-{mtp/dflash}-{runtime}-{user}.yaml`
+Directory: `recipes/{model-name}/{user}/`
+
+#### SGLang Runtime Notes
+
+For SGLang-specific runtime details (flag names, auto-adjustments, GDN kernel dispatch), see Recipe 7 — the recipe itself documents the exact configuration tested on GB10.
+
+| Aspect | SGLang | vLLM |
+|--------|--------|------|
+| Model loading | Multi-thread shard loader (66 shards, ~4.5 min) | Similar |
+| KV cache | 872,448 tokens (13.31 GB each K/V) — slightly less than vLLM | ~1M tokens |
+| CUDA graphs BS | 1-8 | 1-64 (FULL/PIECEWISE) |
+| Spec decode | EAGLE algorithm (NEXTN), auto-adjusts draft tokens | MTP (multi-token prediction) |
+| Draft tokens | Auto-adjusted to `steps + 1` (recipe 9 → 6) | Exact (`num_speculative_tokens=2`) |
+| FlashInfer autotune | Not needed (no autotune pass) | ~12 min first run |
+| Startup time (cached) | ~4.5 min | ~4-5 min |
+| Attention backends | flashinfer, triton, cutedsl | flashinfer, flash_attn |
+| Linear attention (GDN) | ✅ CuteDSLGDNKernel + TritonGDNKernel | N/A (uses standard attention) |
+
+---
+
+### Model & Output Configuration
+
+#### Thinking Mode Overhead Varies by Task Type
+
+Enabling thinking mode (`--reasoning-parser qwen3` / `--reasoning on`) adds overhead that depends heavily on the task:
+
+| Task type | Throughput impact | Reason |
+|---|---|---|
+| Creative/generative (HTML/JS) | **-48%** (16.9→8.8 tok/s) | Model spends many tokens reasoning about design choices before generating |
+| Coding (Python, algorithms) | **~-6%** (16.1→15.1 tok/s) | Minimal reasoning needed for straightforward code tasks |
+| Factual Q&A | **~same** | Short reasoning, quick answer |
+| Sustained generation | **~same** | Once context is established, thinking overhead is amortized |
+
+**Tradeoff**: Thinking mode enables `reasoning_content` in responses and improves output quality for complex tasks, but at a throughput cost that varies significantly by content type.
+
+#### `--language-model-only` Is Required for Text-Only VLM-Derived Models
+
+Models like `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP` have a `config.json` that reports `image-text-to-text` even though the vision tower is stripped. Without `--language-model-only`, vLLM tries to load a multimodal processor and crashes with:
+
+```
+OSError: Can't load image processor for ... missing preprocessor_config.json
+```
+
+**Fix**: Always include `--language-model-only` when serving models that are based on a VLM architecture but are text-only.
+
+#### Content vs Reasoning Field
+
+Using `--reasoning-parser qwen3` causes the model to output all content into the `reasoning` field, with `content: null`. This is expected behavior — clients must read from `.reasoning` not `.content`.
+
+---
+
+### Platform Observations
+
+#### GB10-Specific Observations
+
+- **Memory bandwidth bottleneck**: 273 GB/s LPDDR5X — decode speed limited by weight reading, not compute
+- **FlashInfer autotuning**: 4 passes × 23 profiles each, ~12 min first run. Cached on disk for subsequent runs.
+- **torch.compile**: ~2 min first run (AOT cached). With `--enforce-eager`, skipped entirely.
+- **CUDA graphs**: FULL_AND_PIECEWISE mode. With MTP, downgrades to PIECEWISE.
+- **"Not enough SMs"**: GB10 has 48 SMs, below vLLM's threshold for max_autotune_gemm.
+- **Unified memory**: `nvidia-smi` shows "Not Supported" for GPU memory query. Memory is shared CPU+GPU.
 
 ---
 
