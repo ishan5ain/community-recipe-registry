@@ -180,15 +180,16 @@ The FP8 + MTP combo is the fastest tested. MTP acceptance at 73.9% on GB10 is ex
 
 ### 1. NVFP4 vs FP8 Tradeoffs
 
-| Aspect | FP8 | NVFP4 |
-|--------|-----|-------|
-| Weight size | ~28.75 GiB | ~12.57 GiB |
-| Decode speed (no MTP) | 5.0 tok/s | **6.9 tok/s** (+38%) |
-| KV cache capacity | ~9K tokens | **~18K tokens** (2×) |
-| MTP compatibility | ✅ Great (73.9%) | ❌ Terrible (0%) |
-| DFlash compatibility | ✅ Known working | ⚠️ Untested/hung |
+| Aspect | FP8 | NVFP4 (compressed-tensors) | NVFP4 (modelopt) |
+|--------|-----|--------------------------|-------------------|
+| Weight size | ~28.75 GiB | ~12.57 GiB | ~18.65 GiB |
+| Decode speed (no MTP) | 5.0 tok/s | **6.9 tok/s** (+38%) | — |
+| Decode speed (MTP) | 10.1 tok/s | 5.1 tok/s (0% accept) | **15-17 tok/s** ✅ |
+| KV cache capacity | ~9K tokens | **~18K tokens** (2×) | **~1.1M tokens** (59GiB) |
+| MTP compatibility | ✅ 73.9% | ❌ 0% (head stripped) | ✅ **64-91%** 🎉 |
+| DFlash compatibility | ✅ Known working | ⚠️ Untested/hung | — |
 
-NVFP4 wins on memory efficiency and raw decode speed without MTP. But for peak speed, FP8 + MTP is still king.
+**Updated finding**: NVFP4+MTP with the modelopt format is now the fastest vLLM-based option on GB10 (15-17 tok/s), beating FP8+MTP (10.1 tok/s) by **50-68%**.
 
 ### 2. MTP Acceptance Depends on Quantization Format (Not Just Bits)
 
@@ -218,14 +219,43 @@ For NVFP4 quantization on Blackwell (GB10), there are two competing formats:
 
 **The `modelopt` format FIXES NVFP4+MTP on GB10** ✅ — The SM120 native kernel path works via `FlashInferCutlassNvFp4LinearKernel` on SM 121a. The `VLLM_TEST_FORCE_FP8_MARLIN=1` env var was set but not used (CUTLASS path was selected).
 
-### 4. DFlash Support is Early
+### 4. `VLLM_TEST_FORCE_FP8_MARLIN` Is Not Needed on Current vLLM
+
+The `VLLM_TEST_FORCE_FP8_MARLIN=1` env var was carried over from Recipe 1 (baseline) and earlier community guidance for NVFP4 on SM 121a. With the current vLLM nightly (`0.21.1rc1`), the NVFP4 backend automatically selects `FlashInferCutlassNvFp4LinearKernel` without it. The thinking variant confirmed this by running cleanly without the env var.
+
+**Recommendation**: Omit `VLLM_TEST_FORCE_FP8_MARLIN` in new recipes. Only add if specific CUDA errors occur with the CUTLASS path.
+
+### 5. Thinking Mode Overhead Varies by Task Type
+
+Enabling thinking mode (`--reasoning-parser qwen3`) adds overhead that depends heavily on the task:
+
+| Task type | Throughput impact | Reason |
+|---|---|---|
+| Creative/generative (HTML/JS) | **-48%** (16.9→8.8 tok/s) | Model spends many tokens reasoning about design choices before generating |
+| Coding (Python, algorithms) | **~-6%** (16.1→15.1 tok/s) | Minimal reasoning needed for straightforward code tasks |
+| Factual Q&A | **~same** | Short reasoning, quick answer |
+| Sustained generation | **~same** | Once context is established, thinking overhead is amortized |
+
+**Tradeoff**: Thinking mode enables `reasoning_content` in responses and improves output quality for complex tasks, but at a throughput cost that varies significantly by content type.
+
+### 6. `--language-model-only` Is Required for Text-Only VLM-Derived Models
+
+Models like `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP` have a `config.json` that reports `image-text-to-text` even though the vision tower is stripped. Without `--language-model-only`, vLLM tries to load a multimodal processor and crashes with:
+
+```
+OSError: Can't load image processor for ... missing preprocessor_config.json
+```
+
+**Fix**: Always include `--language-model-only` when serving models that are based on a VLM architecture but are text-only.
+
+### 7. DFlash Support is Early
 
 - Qwen3.6 DFlash: "still under training" — needs vLLM PR #40898
 - Qwen3.5 DFlash: mature and working (see banana_baeee's recipe)
 - llama.cpp DFlash (phuongncn speedhack fork): proven on GB10, 38-40 tok/s (claimed)
 - llama.cpp DFlash tested: Python coding matches claim (25.7 tok/s); HTML/JS and sustained below (see Recipe 4/5)
 
-### 5. GB10-Specific Observations
+### 8. GB10-Specific Observations
 
 - **Memory bandwidth bottleneck**: 273 GB/s LPDDR5X — decode speed limited by weight reading, not compute
 - **FlashInfer autotuning**: 4 passes × 23 profiles each, ~12 min first run. Cached on disk for subsequent runs.
@@ -234,7 +264,7 @@ For NVFP4 quantization on Blackwell (GB10), there are two competing formats:
 - **"Not enough SMs"**: GB10 has 48 SMs, below vLLM's threshold for max_autotune_gemm.
 - **Unified memory**: `nvidia-smi` shows "Not Supported" for GPU memory query. Memory is shared CPU+GPU.
 
-### 6. Sparkrun Gotchas
+### 9. Sparkrun Gotchas
 
 - `sparkrun stop <container_name>` does NOT work — it expects a **recipe name**, not a container name
 - `sparkrun stop --all` needs SSH host keys for localhost (`ssh-keyscan -H 127.0.0.1 >> ~/.ssh/known_hosts`)
@@ -242,13 +272,13 @@ For NVFP4 quantization on Blackwell (GB10), there are two competing formats:
 - Auto-restart: sparkrun respawns containers when killed — stop via sparkrun recipe name or `docker kill && docker rm`
 - Container network mode: `host` (ports exposed directly, not mapped)
 
-### 7. Recipe Versioning
+### 10. Recipe Versioning
 
 Community recipes use `recipe_version: "2"`. File naming convention:
 `{model}-{quant}-{mtp/dflash}-{runtime}-{user}.yaml`
 Directory: `recipes/{model-name}/{user}/`
 
-### 8. FlashInfer vs Flash Attention
+### 11. FlashInfer vs Flash Attention
 
 | Aspect | FlashInfer | Flash Attention |
 |--------|------------|-----------------|
@@ -257,7 +287,7 @@ Directory: `recipes/{model-name}/{user}/`
 | NVFP4 GEMM | ✅ Custom kernel | ⚠️ Limited |
 | DFlash support | ❌ | ✅ |
 
-### 9. Content vs Reasoning Field
+### 12. Content vs Reasoning Field
 
 Using `--reasoning-parser qwen3` causes the model to output all content into the `reasoning` field, with `content: null`. This is expected behavior — clients must read from `.reasoning` not `.content`.
 
@@ -385,7 +415,7 @@ Changes from Recipe 6:
 
 ---
 
-### 9. Llama.cpp Stock Container vs DFlash Fork
+### 13. Llama.cpp Stock Container vs DFlash Fork
 
 The stock `ghcr.io/spark-arena/dgx-llama-cpp:latest` container does NOT support DFlash:
 
