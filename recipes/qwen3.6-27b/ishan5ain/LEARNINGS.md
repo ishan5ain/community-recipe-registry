@@ -167,12 +167,20 @@ Changes from baseline:
 
 ## FP8 Results (for comparison)
 
-| Config | Speed | MTP Acceptance | Weight Memory |
-|--------|-------|----------------|---------------|
-| FP8 (no MTP) | 5.0 tok/s | — | ~28.75 GiB |
-| FP8 + MTP | **10.1 tok/s** 🏆 | **73.9%** | ~28.75 GiB |
+| Config | HTML/JS | Python | Sustained | MTP Acceptance | Weight Memory |
+|--------|:------:|:------:|:---------:|:--------------:|:------------:|
+| FP8 (no MTP) | 5.60 | 5.70 | 5.69 | — | ~28.75 GiB |
+| FP8 + MTP | **10.88** | **11.81** | **10.76** | **~74% avg** | ~28.75 GiB |
 
-The FP8 + MTP combo is the fastest tested. MTP acceptance at 73.9% on GB10 is excellent — the memory-bandwidth bottleneck means speculative decoding fills otherwise-idle compute.
+The FP8 + MTP combo is the fastest vLLM-based option on GB10. MTP acceptance at ~74% is excellent — the memory-bandwidth bottleneck means speculative decoding fills otherwise-idle compute. Benchmarks conducted May 25, 2026 using `@official/qwen3.6-27b-fp8-vllm` and `@official/qwen3.6-27b-fp8-mtp-vllm` recipes.
+
+### Observed MTP Acceptance Over Time (FP8+MTP)
+```
+Per-position acceptance rate: Pos1 0.86-1.00, Pos2 0.64-0.86
+Avg Draft acceptance rate: 70-90% across all requests
+Mean acceptance length: 2.5-3.0 (max 3.0 with num_speculative_tokens=2)
+```
+Acceptance decreases as sustained context grows (Pos2 drops to ~42-58% during 2048-token sustained generation), matching the behavior observed in NVFP4+MTP modelopt (Recipe 6).
 
 ---
 
@@ -189,7 +197,7 @@ The FP8 + MTP combo is the fastest tested. MTP acceptance at 73.9% on GB10 is ex
 | MTP compatibility | ✅ 73.9% | ❌ 0% (head stripped) | ✅ **64-91%** 🎉 |
 | DFlash compatibility | ✅ Known working | ⚠️ Untested/hung | — |
 
-**Updated finding**: NVFP4+MTP with the modelopt format is now the fastest vLLM-based option on GB10 (15-17 tok/s), beating FP8+MTP (10.1 tok/s) by **50-68%**.
+**Key finding**: NVFP4+MTP modelopt (15.0 tok/s sustained) beats FP8+MTP (10.76 tok/s sustained) by **39%** on GB10. However, llama.cpp DFlash Python (25.7 tok/s) remains the fastest overall for coding tasks. For sustained generation, NVFP4+MTP modelopt (15.0 tok/s) is the vLLM winner.
 
 ### 2. MTP Acceptance Depends on Quantization Format (Not Just Bits)
 
@@ -385,14 +393,13 @@ Changes from Recipe 6:
 
 | Recipe | tok/s (HTML/JS) | tok/s (Python) | tok/s (Sustained) | Weight Memory | Best For |
 |--------|:---------------:|:--------------:|:----------------:|:------------:|----------|
-| FP8 + MTP | — | — | — | 28.75 GiB | Max raw speed |
+| **FP8 + MTP** 🏆 | **10.88** | **11.81** | **10.76** | 28.75 GiB | Max vLLM speed on GB10 |
 | **llama.cpp DFlash (baseline)** | **17.3** | **25.7** 🏆 | **10.1** | ~16 GiB | Python coding |
 | **llama.cpp DFlash (thinking)** | **17.0** | **21.9** | **11.0** 🏆 | ~16 GiB | Agentic coding w/ thinking |
-| **NVFP4+MTP (modelopt)** | **16.9** | **16.1** | **15.0** | 18.65 GiB | Fast NVFP4 via vLLM |
-| **NVFP4+MTP (thinking)** 🆕 | **8.8** | **15.1** | **15.0** | 18.65 GiB | Qwen3.6 official params |
-| NVFP4 (no MTP) | 6.9 | — | — | 12.57 GiB | Long context efficiency |
-| FP8 (no MTP) | — | — | — | 28.75 GiB | Baseline |
-| FP8 + MTP | — | — | — | 28.75 GiB | Max raw speed |
+| **NVFP4+MTP (modelopt)** | **16.9** | **16.1** | **15.0** 🏆 | 18.65 GiB | Fast NVFP4 via vLLM |
+| **NVFP4+MTP (thinking)** 🆕 | **8.8** | **15.1** | **15.0** 🏆 | 18.65 GiB | Qwen3.6 official params |
+| NVFP4 (no MTP) | 6.9 | 6.74 | 6.86 | 12.57 GiB | Long context efficiency |
+| FP8 (no MTP) | 5.60 | 5.70 | 5.69 | 28.75 GiB | Baseline comparison |
 | NVFP4 + MTP (compressed-tensors) | — | — | — | 12.57 GiB | ❌ 0% acceptance |
 | NVFP4 + DFlash (vLLM) | — | — | — | 27.57 GiB | ⚠️ Needs PR #40898 |
 
