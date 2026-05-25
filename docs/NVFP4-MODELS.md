@@ -1,5 +1,8 @@
 # NVFP4 Models on HuggingFace
 
+> **Locally maintained reference doc** — not a PR/upstream contribution. Updated
+> periodically for personal knowledge and tracking NVFP4 model availability.
+>
 > Comprehensive catalog of NVFP4-quantized models available on HuggingFace.
 > Generated via `hf models list --search "nvfp4" --sort downloads` (May 2026).
 >
@@ -153,6 +156,10 @@ with newly released base models.
 | **nvidia/FLUX.1-dev-onnx** | BFL / NVIDIA | Text-to-Image | ONNX format |
 | **Efficient-Large-Model/LongLive-2.0-5B-NVFP4-S4** | ELM | Few-step Video | Wan-based, FP4 KV-cache |
 | **lightx2v/Wan-NVFP4** | lightx2v | Few-step Video | 4-step distilled, real-time on RTX 5090 |
+| **black-forest-labs/FLUX.2-klein-9b-nvfp4** | Black Forest Labs | Text-to-Image | Official NVFP4 of Klein 9B; ~9GB VRAM on Blackwell |
+| **black-forest-labs/FLUX.2-dev-NVFP4** | Black Forest Labs | Text-to-Image / Image Editing | Official NVFP4 of 32B dev model; also mixed BF16 variant |
+| **ApacheOne/FLUX.2-klein-9b-kv-nvfp4_mixed** | Community (ApacheOne) | Text-to-Image | KV-cache NVFP4 variant; ComfyUI-compatible |
+| **Winnougan/Klein-9b-kv-mxfp8** | Community (Winnougan) | Text-to-Image | MXFP8/NVFP4 KV-cache variant |
 
 ---
 

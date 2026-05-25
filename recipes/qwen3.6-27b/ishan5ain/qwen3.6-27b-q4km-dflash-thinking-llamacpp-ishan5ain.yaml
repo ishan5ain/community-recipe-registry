@@ -1,0 +1,81 @@
+recipe_version: "2"
+model: unsloth/Qwen3.6-27B-GGUF:Q4_K_M
+runtime: llama-cpp
+container: dgx-llama-cpp-dflash:latest
+max_nodes: 1
+
+metadata:
+  description: |
+    Qwen3.6-27B Q4_K_M via llama.cpp with DFlash block-diffusion speculative
+    decoding on DGX Spark GB10. Target: Q4_K_M (16 GB). Drafter: Q8_0 (1.7 GB).
+
+    Optimized variant with:
+    - Thinking mode + preserve_thinking for agentic coding
+    - Qwen3.6 official sampling params (temp=0.6, top_p=0.95, top_k=20, min_p=0.0)
+    - No --no-mmap (matches speedhack author's setup)
+  maintainer: "@ishan5ain"
+  model_params: 27B
+  model_dtype: q4_k_m
+  kv_dtype: bfloat16
+
+defaults:
+  port: 8080
+  host: 0.0.0.0
+  n_gpu_layers: 99
+  n_gpu_layers_draft: 99
+  ctx_size: 256000
+  draft_ctx_size: 256
+  batch_size: 2048
+  ubatch_size: 1024
+  draft_model: spiritbuun/Qwen3.6-27B-DFlash-GGUF:dflash-draft-3.6-q8_0
+  draft_model_url: https://huggingface.co/spiritbuun/Qwen3.6-27B-DFlash-GGUF/resolve/main/dflash-draft-3.6-q8_0.gguf
+  draft_max: 14
+  draft_n_max: 14
+  draft_n_min: 0
+  draft_p_min: 0.3
+  spec_type: dflash
+  kv_cache_type: turbo4
+  temp: 0.6
+  top_k: 20
+  top_p: 0.95
+  min_p: 0.0
+
+env:
+  GGML_CUDA_ENABLE_UNIFIED_MEMORY: "1"
+
+command: |
+  if [ ! -f /tmp/dflash-draft.gguf ]; then \
+    echo "Downloading draft model (~1.7 GB)..." && \
+    curl -sL --max-time 300 -o /tmp/dflash-draft.gguf "{draft_model_url}" && \
+    echo "Draft model downloaded." ; \
+  fi && \
+  llama-server \
+    -hf {model} \
+    -md /tmp/dflash-draft.gguf \
+    --host {host} \
+    --port {port} \
+    --n-gpu-layers {n_gpu_layers} \
+    --n-gpu-layers-draft {n_gpu_layers_draft} \
+    --ctx-size {ctx_size} \
+    --ctx-size-draft {draft_ctx_size} \
+    --batch-size {batch_size} \
+    --ubatch-size {ubatch_size} \
+    --flash-attn on \
+    --jinja \
+    --reasoning on \
+    --reasoning-format deepseek \
+    --chat-template-kwargs '{"preserve_thinking":true}' \
+    --temp {temp} \
+    --top-k {top_k} \
+    --top-p {top_p} \
+    --min-p {min_p} \
+    --cache-ram 0 \
+    --spec-type {spec_type} \
+    --spec-dflash-default \
+    --spec-draft-p-min {draft_p_min} \
+    --spec-draft-n-max {draft_n_max} \
+    --spec-draft-n-min {draft_n_min} \
+    --draft-max {draft_max} \
+    --cont-batching \
+    -ctk {kv_cache_type} \
+    -ctv {kv_cache_type}

@@ -50,7 +50,9 @@
 | Drafted throughput | 10.2 tok/s (all wasted) |
 | KV pool reduction | ~10% from PIECEWISE graph mode |
 
-**Root cause**: The MTP heads share the same NVFP4-quantized weights as the main model. At 4-bit precision, the draft predictions are too noisy for the main model to accept. This adds overhead without benefit.
+**Root cause**: The `unsloth/Qwen3.6-27B-NVFP4` model uses the `compressed-tensors` quantization format, which **drops the MTP head during export** — the MTP weights are simply absent. The 0% acceptance is not a quantization precision issue; the draft head outputs garbage because its weights are missing.
+
+**Important**: There is a separate quantization format called `modelopt` (NVIDIA's ModelOpt path) that **preserves the MTP head in bf16**. Models using `modelopt` NVFP4, such as `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP` (text-only, ~80 tok/s claimed on RTX 5090) or `sakamakismile/Huihui-Qwen3.6-27B-abliterated-NVFP4-MTP` (with vision), can have fully working MTP speculative decoding.
 
 **Log evidence**:
 ```
@@ -94,6 +96,75 @@ Fixed by removing `--kv-cache-dtype fp8` when using `--attention-backend flash_a
 
 ---
 
+## Recipe 4: llama.cpp DFlash — Baseline (no thinking)
+
+**File**: `qwen3.6-27b-q4km-dflash-llamacpp-ishan5ain.yaml`
+**Runtime**: llama-cpp (phuongncn speedhack fork)
+**Container**: `dgx-llama-cpp-dflash:latest` (custom build)
+**Status**: ✅ Working
+
+| Metric | Value |
+|--------|-------|
+| SM arch build fix | Initial build `120` → rebuilt with `121a` (blackwell SM 12.1) |
+| Containers built | 2: binary-copy + rebuilt for SM 12.1a |
+| HTTPS support | ❌ Not compiled in (no libssl-dev); uses `-md` + curl for draft model |
+| Draft model download | ✅ curl via HuggingFace (1.7 GB Q8_0) |
+| Target model | unsloth/Qwen3.6-27B-GGUF:Q4_K_M (16 GB, pre-downloaded by sparkrun) |
+| GPU memory | ~15.3 GiB target + ~1.6 GiB draft + ~4.1 GiB KV cache (turbo4) + ~1.2 GiB recurrent = ~22 GiB total |
+| DFlash token acceptance | **58.3%** (matches speedhack author's 52-61% range for Q4_K_M) |
+| DFlash call acceptance | **75.3%** |
+| Avg spec cycle | ~250ms (draft ~33ms, verify ~190ms) |
+
+### Benchmark Results
+
+| Scenario | tok/s | Tokens | Time |
+|----------|:-----:|:------:|:----:|
+| HTML/JS coding (400 tok) | **17.3** | 400 | 23.1s |
+| Python coding (500 tok) | **25.7** | 500 | 19.4s |
+| Short chat (~150 tok) | 1.6* | 4 | 2.4s |
+| Medium context (300 tok) | **11.2** | 300 | 26.6s |
+| Sustained 2048 tok | **10.1** | 2048 | 202.2s |
+
+*\*Short chat only generated 4 tokens (just the word "Paris") — too short to measure meaningfully.*
+
+**Key finding**: Python coding at 25.7 tok/s closely matches the speedhack author's claimed 24-25 tok/s. HTML/JS and sustained are below the claimed 38-40 and 27-29 tok/s. Gap may be due to content type, prompt design, or batch-size capping.
+
+---
+
+## Recipe 5: llama.cpp DFlash — Thinking variant
+
+**File**: `qwen3.6-27b-q4km-dflash-thinking-llamacpp-ishan5ain.yaml`
+**Runtime**: llama-cpp (phuongncn speedhack fork)
+**Container**: `dgx-llama-cpp-dflash:latest` (custom build)
+**Status**: ✅ Working
+
+Changes from baseline:
+- `--reasoning on` + `--reasoning-format deepseek` — enables Qwen3.6 thinking mode
+- `--chat-template-kwargs '{"preserve_thinking":true}'` — retain reasoning context across turns
+- `--temp 0.6 --top-k 20 --top-p 0.95 --min-p 0.0` — official Qwen3.6 precise coding params
+- No `--no-mmap` — matches speedhack author's setup
+
+| Metric | Value |
+|--------|-------|
+| DFlash token acceptance | **56.0%** |
+| DFlash call acceptance | **73.6%** |
+| Avg spec cycle | ~251ms (similar to baseline) |
+| Reasoning field | ✅ `reasoning_content` populated via `deepseek` format |
+
+### Benchmark Results
+
+| Scenario | tok/s | Tokens | Time |
+|----------|:-----:|:------:|:----:|
+| HTML/JS coding (400 tok) | **17.0** | 400 | 23.5s |
+| Python coding (500 tok) | **21.9** | 500 | 22.7s |
+| Short chat (150 tok) | **12.8** | 106 | 8.3s |
+| Medium context (300 tok) | **12.4** | 300 | 24.0s |
+| Sustained 2048 tok | **11.0** | 2048 | 186.0s |
+
+**Thinking overhead**: ~1-3 tok/s slower than baseline due to thinking token generation. Output quality improves significantly — short chat now generates 106 tokens (with thinking) vs 4 in baseline. The `reasoning_content` field contains the model's chain-of-thought.
+
+---
+
 ## FP8 Results (for comparison)
 
 | Config | Speed | MTP Acceptance | Weight Memory |
@@ -119,20 +190,42 @@ The FP8 + MTP combo is the fastest tested. MTP acceptance at 73.9% on GB10 is ex
 
 NVFP4 wins on memory efficiency and raw decode speed without MTP. But for peak speed, FP8 + MTP is still king.
 
-### 2. MTP Acceptance is Quantization-Sensitive
+### 2. MTP Acceptance Depends on Quantization Format (Not Just Bits)
 
-FP8 (8-bit) MTP heads: 73.9% acceptance → +102% speed
-NVFP4 (4-bit) MTP heads: 0.0% acceptance → -26% speed (overhead)
+Our NVFP4+MTP failure (0% acceptance) was caused by the **quantization format**, not the bit depth:
 
-The 4-bit quantization loses too much precision for the MTP heads. The draft predictions don't match the main model's expectations. This is a fundamental limitation, not a bug.
+| Quant format | MTP head preservation | MTP works? | Example model |
+|---|---|---|---|
+| `compressed-tensors` | ❌ **Dropped during export** | ❌ 0% acceptance | `unsloth/Qwen3.6-27B-NVFP4` |
+| `modelopt` (ModelOpt) | ✅ **Restored in bf16** | ✅ **64-91% on GB10** 🎉 | `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP` |
+| Unquantized (bf16) | ✅ Intact | ✅ 73.9% (FP8+MTP) | `Qwen/Qwen3.6-27B` (FP8 quant) |
 
-### 3. DFlash Support is Early
+**Root cause**: The `compressed-tensors` export path strips all non-essential weights including the MTP heads. The `modelopt` export path preserves the MTP head in bf16 while keeping the main weights in NVFP4. This is a toolchain issue, not a fundamental precision limitation.
+
+### 3. Quantization Format: `modelopt` vs `compressed-tensors`
+
+For NVFP4 quantization on Blackwell (GB10), there are two competing formats:
+
+| Aspect | `modelopt` (NVIDIA ModelOpt) | `compressed-tensors` |
+|---|---|---|
+| MTP head | ✅ Preserved in bf16 | ❌ Stripped |
+| Vision tower | ✅ Preserved | ✅ Preserved (in VLM models) |
+| vLLM backend | SM120 native path | compressed-tensors loader |
+| Known good at | ✅ GB10 (sm_121a) — tested working via `FlashInferCutlassNvFp4LinearKernel` | GB10 (sm_121a) tested |
+| Startup speed | Faster (native path) | Slower (detour) |
+| MTP on GB10 | ✅ Working — **64-91% acceptance rate** 🎉 | ❌ 0% acceptance (MTP head stripped) |
+| Models | `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP`, `sakamakismile/Huihui-Qwen3.6-27B-abliterated-NVFP4-MTP` | `unsloth/Qwen3.6-27B-NVFP4` |
+
+**The `modelopt` format FIXES NVFP4+MTP on GB10** ✅ — The SM120 native kernel path works via `FlashInferCutlassNvFp4LinearKernel` on SM 121a. The `VLLM_TEST_FORCE_FP8_MARLIN=1` env var was set but not used (CUTLASS path was selected).
+
+### 4. DFlash Support is Early
 
 - Qwen3.6 DFlash: "still under training" — needs vLLM PR #40898
 - Qwen3.5 DFlash: mature and working (see banana_baeee's recipe)
-- llama.cpp DFlash (spiritbuun fork): proven on GB10, 38-40 tok/s
+- llama.cpp DFlash (phuongncn speedhack fork): proven on GB10, 38-40 tok/s (claimed)
+- llama.cpp DFlash tested: Python coding matches claim (25.7 tok/s); HTML/JS and sustained below (see Recipe 4/5)
 
-### 4. GB10-Specific Observations
+### 5. GB10-Specific Observations
 
 - **Memory bandwidth bottleneck**: 273 GB/s LPDDR5X — decode speed limited by weight reading, not compute
 - **FlashInfer autotuning**: 4 passes × 23 profiles each, ~12 min first run. Cached on disk for subsequent runs.
@@ -141,7 +234,7 @@ The 4-bit quantization loses too much precision for the MTP heads. The draft pre
 - **"Not enough SMs"**: GB10 has 48 SMs, below vLLM's threshold for max_autotune_gemm.
 - **Unified memory**: `nvidia-smi` shows "Not Supported" for GPU memory query. Memory is shared CPU+GPU.
 
-### 5. Sparkrun Gotchas
+### 6. Sparkrun Gotchas
 
 - `sparkrun stop <container_name>` does NOT work — it expects a **recipe name**, not a container name
 - `sparkrun stop --all` needs SSH host keys for localhost (`ssh-keyscan -H 127.0.0.1 >> ~/.ssh/known_hosts`)
@@ -149,13 +242,13 @@ The 4-bit quantization loses too much precision for the MTP heads. The draft pre
 - Auto-restart: sparkrun respawns containers when killed — stop via sparkrun recipe name or `docker kill && docker rm`
 - Container network mode: `host` (ports exposed directly, not mapped)
 
-### 6. Recipe Versioning
+### 7. Recipe Versioning
 
 Community recipes use `recipe_version: "2"`. File naming convention:
 `{model}-{quant}-{mtp/dflash}-{runtime}-{user}.yaml`
 Directory: `recipes/{model-name}/{user}/`
 
-### 7. FlashInfer vs Flash Attention
+### 8. FlashInfer vs Flash Attention
 
 | Aspect | FlashInfer | Flash Attention |
 |--------|------------|-----------------|
@@ -164,22 +257,108 @@ Directory: `recipes/{model-name}/{user}/`
 | NVFP4 GEMM | ✅ Custom kernel | ⚠️ Limited |
 | DFlash support | ❌ | ✅ |
 
-### 8. Content vs Reasoning Field
+### 9. Content vs Reasoning Field
 
 Using `--reasoning-parser qwen3` causes the model to output all content into the `reasoning` field, with `content: null`. This is expected behavior — clients must read from `.reasoning` not `.content`.
 
 ---
 
+## Recipe 6: NVFP4 + MTP (modelopt format) — WORKING 🎉
+
+**File**: `qwen3.6-27b-nvfp4-mtp-modelopt-vllm-ishan5ain.yaml`
+**Model**: `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP`
+**Runtime**: vllm
+**Container**: `ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest`
+**Status**: ✅ Working — MTP acceptance rate **64-91%** (vs 0% in Recipe 2)
+
+**Key differences from Recipe 2** (which got 0% MTP acceptance):
+- Uses `modelopt` quantization (not `compressed-tensors`)
+- **MTP head preserved in bf16** (not stripped) — this is why it works
+- Text-only (vision tower stripped) — smaller weight footprint
+- Claimed ~80 tok/s on RTX 5090 with MTP (we get ~15-17 tok/s on GB10)
+
+| Metric | Value |
+|--------|-------|
+| Decode speed | **15-17 tok/s** (varies by scenario) |
+| Model weights | 18.65 GiB (NVFP4 + MTP head in bf16) |
+| KV cache | 1,141,915 tokens (59.68 GiB available) |
+| NVFP4 GEMM backend | `FlashInferCutlassNvFp4LinearKernel` ✅ |
+| MTP acceptance rate | **64-91%** across all requests |
+| Per-position acceptance | Pos 1: 75-94%, Pos 2: 53-89% |
+| MTP draft tokens | 2 (num_speculative_tokens) |
+| Spec decode throughput | ~7-10 tok/s accepted, ~11-12 tok/s drafted |
+| CUDA graph mode | PIECEWISE (FULL not supported with spec-decode + FlashInfer) |
+| Startup time (first) | ~16 min (230s model load + 69s torch.compile + ~12 min FlashInfer autotune) |
+| Startup time (cached) | ~4-5 min (same as Recipe 1) |
+
+**First run failure**: Missing `preprocessor_config.json` — model's `config.json` reports `image-text-to-text` even though vision tower is stripped.
+- **Fix**: Added `--language-model-only` flag
+
+### Benchmark Results
+
+| Scenario | tok/s | Tokens | Time |
+|----------|:-----:|:------:|:----:|
+| HTML/JS coding (400 tok) | **16.9** | 400 | 23.7s |
+| Python coding (500 tok) | **16.1** | 500 | 30.9s |
+| Short chat (150 tok) | **15.4** | 117 | 7.6s |
+| Sustained 500 tok | **15.0** | 500 | 33.2s |
+
+### MTP Acceptance Over Time
+
+```
+1st request (fresh):  94.4%, 88.9% → 91.7% avg
+2nd request:          90.0%, 83.3% → 86.7% avg
+3rd request:          91.2%, 86.0% → 88.6% avg
+4th request (sustained): 86.4%, 67.8% → 77.1% avg
+5th request (sustained): 75.0%, 53.3% → 64.2% avg
+```
+
+**Observations**:
+- First-token acceptance is excellent (~86-94%) — MTP confidently predicts the next token
+- Second-token acceptance drops at sustained context (~53-67%) — MTP with only 2 tokens has limited lookahead
+- Acceptance decreases as context grows — the draft predictions become less accurate
+- Overall throughput is **2.2-2.5× faster** than Recipe 1 (NVFP4 no MTP: 6.9 tok/s)
+
+**Important**: The `num_speculative_tokens=2` means MTP runs 2 forward passes per decode step. The vLLM warning says: "Enabling num_speculative_tokens > 1 will run multiple times of forward on same MTP layer, which may result in lower acceptance rate." This is visible in the second-position dropoff.
+
+**Risks on DGX Spark**:
+- The `modelopt` NVFP4 format uses SM120 native kernel path — works on SM 121a via `FlashInferCutlassNvFp4LinearKernel`
+- `VLLM_TEST_FORCE_FP8_MARLIN=1` was set but the log shows `CUTLASS` (not Marlin) being used — the env var may not be needed for this model
+
+---
+
 ## Performance Summary
 
-| Recipe | tok/s | Weight Memory | KV Cache | Best For |
-|--------|-------|---------------|----------|----------|
-| FP8 + MTP | **10.1** 🥇 | 28.75 GiB | ~9K | Max speed |
-| NVFP4 (no MTP) | **6.9** 🥈 | 12.57 GiB | ~18K | Long context / memory efficiency |
-| FP8 (no MTP) | 5.0 | 28.75 GiB | ~9K | Baseline |
-| NVFP4 + MTP | 5.1 ❌ | 12.57 GiB | ~18K | Don't use |
-| NVFP4 + DFlash (vLLM) | — ⚠️ | 27.57 GiB | — | Needs PR #40898 |
-| llama.cpp DFlash (Q4_K_M) | **38-40** 🏆🏆 | ~16 GiB | turbo4 | Max performance (if built) |
+### All Configurations Compared
+
+| Recipe | tok/s (HTML/JS) | tok/s (Python) | tok/s (Sustained) | Weight Memory | Best For |
+|--------|:---------------:|:--------------:|:----------------:|:------------:|----------|
+| FP8 + MTP | — | — | — | 28.75 GiB | Max raw speed |
+| **llama.cpp DFlash (baseline)** | **17.3** | **25.7** 🏆 | **10.1** | ~16 GiB | Python coding |
+| **llama.cpp DFlash (thinking)** | **17.0** | **21.9** | **11.0** 🏆 | ~16 GiB | Agentic coding w/ thinking |
+| **NVFP4+MTP (modelopt)** 🆕 | **16.9** | **16.1** | **15.0** | 18.65 GiB | Fast NVFP4 via vLLM |
+| NVFP4 (no MTP) | 6.9 | — | — | 12.57 GiB | Long context efficiency |
+| FP8 (no MTP) | — | — | — | 28.75 GiB | Baseline |
+| FP8 + MTP | — | — | — | 28.75 GiB | Max raw speed |
+| NVFP4 + MTP (compressed-tensors) | — | — | — | 12.57 GiB | ❌ 0% acceptance |
+| NVFP4 + DFlash (vLLM) | — | — | — | 27.57 GiB | ⚠️ Needs PR #40898 |
+
+### llama.cpp DFlash vs Speedhack Claims
+
+| Scenario | Baseline (no thinking) | Thinking variant | Speedhack claim | Match? |
+|----------|:---------------------:|:----------------:|:---------------:|:------:|
+| HTML/JS coding | 17.3 tok/s | 17.0 tok/s | **38-40 tok/s** | ❌ 2.2× gap |
+| Python coding | **25.7 tok/s** | 21.9 tok/s | **24-25 tok/s** | ✅ Baseline matches |
+| Short chat | ~1.6 tok/s | **12.8 tok/s** | 23-25 tok/s | ⚠️ Thinking improves |
+| Medium context | **11.2 tok/s** | 12.4 tok/s | 20-22 tok/s | ❌ 1.8× gap |
+| Sustained 2048 | 10.1 tok/s | **11.0 tok/s** | 27-29 tok/s | ❌ 2.6× gap |
+
+**Key observations**:
+- Python coding (25.7 tok/s) matches the speedhack claim — DFlash works correctly
+- Sustained and HTML/JS below claims — likely content/prompt/tuning differences
+- Thinking mode adds ~1-3 tok/s overhead but enables reasoning for agentic tasks
+- Token acceptance rate (56-58%) is within speedhack's reported 52-61% range
+- Baseline DFlash Python (25.7 tok/s) is **2.5× faster** than NVFP4 baseline (6.9 tok/s)
 
 ---
 
@@ -210,4 +389,18 @@ directly until a custom container is built.
 
 ---
 
-*Testing conducted May 24, 2026 on ASUS Ascent GX10 (NVIDIA GB10)*
+## To Investigate
+
+### AEON-7 Qwen3.6-35B-A3B MoE + DFlash (vLLM)
+
+Pre-built vLLM container + NVFP4 DFlash for 35B-A3B MoE on DGX Spark, achieving **116.8 tok/s** single-stream.
+Not directly applicable to our 27B dense focus, but worth noting for future exploration.
+
+- Repo: [AEON-7/Qwen3.6-NVFP4-DFlash](https://github.com/AEON-7/Qwen3.6-NVFP4-DFlash)
+- Container: `ghcr.io/aeon-7/vllm-spark-omni-q36:v1.2`
+- Uses custom vLLM patches for SM 121a compatibility
+- DFlash not MTP as the speculative backend
+
+---
+
+*Testing conducted May 24-25, 2026 on ASUS Ascent GX10 (NVIDIA GB10)*
