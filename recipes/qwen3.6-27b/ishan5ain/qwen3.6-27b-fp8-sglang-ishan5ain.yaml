@@ -34,7 +34,8 @@ command: |
       --stream-interval {stream_interval} \
       --mamba-scheduler-strategy {mamba_scheduler_strategy} \
       --max-running-requests {max_running_requests} \
-      --trust-remote-code
+      --trust-remote-code \
+      --sleep-on-idle
 defaults:
   fp8_gemm_backend: cutlass
   speculative_adaptive_flag: ''
