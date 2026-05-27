@@ -1,0 +1,992 @@
+sparkrun_benchmark:
+  version: '1'
+  timestamp: '2026-05-27T06:40:08.274623+00:00'
+  recipe:
+    name: qwen3.6-27b-prismaquant-5.5bit-mtp3-vllm-ishan5ain
+    qualified_name: recipes/qwen3.6-27b/ishan5ain/qwen3.6-27b-prismaquant-5.5bit-mtp3-vllm-ishan5ain.yaml
+    type: sparkrun
+    model: rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm
+    container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest
+    runtime: vllm-distributed
+    registry: null
+    registry_git: ''
+    text: "recipe_version: '2'\nmodel: rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm\n\
+      runtime: vllm\nbuilder: eugr\nmax_nodes: 1\ncontainer: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest\n\
+      metadata:\n  description: \"Qwen3.6-27B mixed-precision quantization at 5.5\
+      \ bpp via PrismaQuant\\\n    \\ on DGX\\nSpark GB10. Uses a per-Linear sensitivity-driven\
+      \ allocator (multi-choice\\n\\\n    knapsack) to assign each Linear module its\
+      \ own format \\u2014 NVFP4 (bulk MLP +\\n\\\n    medium-sensitivity attention),\
+      \ MXFP8 (high-sensitivity dense), or BF16\\n(most-sensitive\\\n    \\ Linears\
+      \ + embed + norms). Selected as the Pareto knee of the\\n\\u0394loss-vs-bpp\\\
+      \n    \\ curve (Kneedle algorithm): below 5.5 bpp the loss curve\\nsteepens\
+      \ sharply, above\\\n    \\ 5.5 bpp the marginal gain per bit diminishes.\\n\\\
+      n\\u250C\\u2500\\u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u252C\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u252C\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      \n    \\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2510\\n\\u2502 Format   \\u2502 Count\\\n    \\      \\u2502 Use          \
+      \            \\u2502\\n\\u251C\\u2500\\u2500\\u2500\\u2500\\u2500\\\n    \\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\u253C\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\\n    \\u2500\\u2500\\u2500\\u2500\\u2500\\u253C\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2524\\n\\u2502 NVFP4    \\u2502 349       \\\n\
+      \    \\ \\u2502 Bulk dense MLPs,         \\u2502\\n\\u2502          \\u2502\
+      \            \\u2502\\\n    \\ medium-sensitivity attn,  \\u2502\\n\\u2502 \
+      \         \\u2502            \\u2502 most\\\n    \\ visual Linears       \\\
+      u2502\\n\\u2502 MXFP8    \\u2502  35        \\u2502 High-sensitivity\\\n   \
+      \ \\ dense    \\u2502\\n\\u2502 BF16     \\u2502 112+352    \\u2502 Top-sensitivity\
+      \ Linears,\\\n    \\  \\u2502\\n\\u2502          \\u2502            \\u2502\
+      \ norms, biases, embed     \\\n    \\ \\u2502\\n\\u2514\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2534\\\n    \\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2534\\\
+      \n    \\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\n    \\u2518\\n\\nModel size: ~19\
+      \ GB on disk (vs 54 GB BF16 source \\u2014 65% reduction).\\n\\\n    MTP speculative\
+      \ decoding at n=3 (optimal on DGX Spark; n=2 leaves ~10%\\ntok/s\\\n    \\ on\
+      \ the table, n=4 regresses). Multimodal (vision + text) via standard\\nimage-text-to-text\\\
+      \n    \\ API.\\n\\nvLLM only \\u2014 no transformers-native runtime path for\
+      \ this precision\\\n    \\ mix.\\nvLLM 0.11+ with compressed-tensors support\
+      \ required.\\n\\nArtifact by @RobTand.\\\n    \\ See https://huggingface.co/rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm\\\
+      n\"\n  maintainer: '@ishan5ain'\n  model_params: 27B\n  model_dtype: mixed\n\
+      \  kv_dtype: fp8\n  quantization: prismaquant (nvfp4+mxfp8+bf16)\n  quant_bits:\
+      \ 5\n  num_layers: 64\n  num_kv_heads: 4\n  head_dim: 256\ndefaults:\n  port:\
+      \ 8000\n  host: 0.0.0.0\n  tensor_parallel: 1\n  pipeline_parallel: 1\n  gpu_memory_utilization:\
+      \ 0.9\n  dtype: bfloat16\n  kv_cache_dtype: fp8\n  max_model_len: 32768\n  max_num_batched_tokens:\
+      \ 32768\n  max_num_seqs: 8\n  attention_backend: flashinfer\n  quantization:\
+      \ compressed-tensors\n  tool_call_parser: qwen3_coder\n  reasoning_parser: qwen3\n\
+      \  speculative_config: '{\"method\":\"mtp\",\"num_speculative_tokens\":3}'\n\
+      \  served_model_name: qwen3.6-prismaquant-5.5bit\nenv:\n  VLLM_MARLIN_USE_ATOMIC_ADD:\
+      \ '1'\n  VLLM_NVFP4_GEMM_BACKEND: flashinfer-cutlass\n  XDG_CACHE_HOME: /cache/huggingface\n\
+      \  VLLM_CACHE_ROOT: /cache/huggingface/vllm\ncommand: |\n  vllm serve {model}\
+      \ \\\n    --host {host} \\\n    --port {port} \\\n    --served-model-name {served_model_name}\
+      \ \\\n    --tensor-parallel-size {tensor_parallel} \\\n    --pipeline-parallel-size\
+      \ {pipeline_parallel} \\\n    --gpu-memory-utilization {gpu_memory_utilization}\
+      \ \\\n    --dtype {dtype} \\\n    --kv-cache-dtype {kv_cache_dtype} \\\n   \
+      \ --max-model-len {max_model_len} \\\n    --max-num-batched-tokens {max_num_batched_tokens}\
+      \ \\\n    --max-num-seqs {max_num_seqs} \\\n    --trust-remote-code \\\n   \
+      \ --quantization {quantization} \\\n    --enable-auto-tool-choice \\\n    --tool-call-parser\
+      \ {tool_call_parser} \\\n    --reasoning-parser {reasoning_parser} \\\n    --attention-backend\
+      \ {attention_backend} \\\n    --enable-prefix-caching \\\n    --speculative-config\
+      \ '{speculative_config}' \\\n    --seed 0\n"
+    hash: 5fb53fb8dca3e574cee7b73374d82504ac3ae23d28f44b75efd3db13fede9584
+  model:
+    dtype: mixed
+    params: 27B
+    num_layers: 64
+    num_kv_heads: 4
+    head_dim: 256
+    quantization: prismaquant (nvfp4+mxfp8+bf16)
+    quant_bits: 5.5
+    kv_dtype: fp8
+  cluster:
+    tp: 1
+    cluster_id: sparkrun_a049933935a1
+    runtime_info: {}
+  benchmark:
+    framework: llama-benchy
+    profile: null
+    args:
+      pp:
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      depth:
+      - 4
+      prefix_caching: true
+      served_model_name: qwen3.6-prismaquant-5.5bit
+      exit_on_first_fail: true
+  results:
+    json:
+      model: rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm
+      max_concurrency: 1
+      benchmarks:
+      - concurrency: 1
+        context_size: 4
+        prompt_size: 256
+        response_size: 32
+        is_context_prefill_phase: true
+        pp_throughput:
+          mean: 1.9732369539136438
+          std: 0.5634883553632327
+          values:
+          - 1.1765379466453922
+          - 2.386808441921629
+          - 2.3563644731739104
+        pp_req_throughput:
+          mean: 1.9732369539136438
+          std: 0.5634883553632327
+          values:
+          - 1.1765379466453922
+          - 2.386808441921629
+          - 2.3563644731739104
+        tg_throughput:
+          mean: 20.7276815625343
+          std: 2.6450041299206624
+          values:
+          - 24.460738403266244
+          - 18.655519392884877
+          - 19.06678689145178
+        tg_req_throughput:
+          mean: 20.7276815625343
+          std: 2.6450041299206624
+          values:
+          - 24.460738403266244
+          - 18.655519392884877
+          - 19.06678689145178
+        peak_throughput:
+          mean: 22.0
+          std: 2.8284271247461903
+          values:
+          - 26.0
+          - 20.0
+          - 20.0
+        peak_req_throughput:
+          mean: 22.0
+          std: 2.8284271247461903
+          values:
+          - 26.0
+          - 20.0
+          - 20.0
+        ttfr:
+          mean: 566.3991363398964
+          std: 201.90300235875904
+          values:
+          - 851.9159970019246
+          - 420.9341860114364
+          - 426.3472260063281
+        est_ppt:
+          mean: 564.434475672897
+          std: 201.90300235875904
+          values:
+          - 849.9513363349251
+          - 418.969525344437
+          - 424.3825653393287
+        e2e_ttft:
+          mean: 566.3991363398964
+          std: 201.90300235875904
+          values:
+          - 851.9159970019246
+          - 420.9341860114364
+          - 426.3472260063281
+        throughput_over_time: null
+        requests_throughput_over_time: null
+      - concurrency: 1
+        context_size: 4
+        prompt_size: 256
+        response_size: 32
+        is_context_prefill_phase: false
+        pp_throughput:
+          mean: 436.17970464776766
+          std: 13.986446265762545
+          values:
+          - 452.2795474218189
+          - 438.081030202996
+          - 418.17853631848817
+        pp_req_throughput:
+          mean: 436.17970464776766
+          std: 13.986446265762545
+          values:
+          - 452.2795474218189
+          - 438.081030202996
+          - 418.17853631848817
+        tg_throughput:
+          mean: 17.11937407694603
+          std: 2.334035023270319
+          values:
+          - 13.826644494678707
+          - 18.965809251507526
+          - 18.56566848465186
+        tg_req_throughput:
+          mean: 17.11937407694603
+          std: 2.334035023270319
+          values:
+          - 13.826644494678707
+          - 18.965809251507526
+          - 18.56566848465186
+        peak_throughput:
+          mean: 19.333333333333332
+          std: 0.9428090415820634
+          values:
+          - 18.0
+          - 20.0
+          - 20.0
+        peak_req_throughput:
+          mean: 19.333333333333332
+          std: 0.9428090415820634
+          values:
+          - 18.0
+          - 20.0
+          - 20.0
+        ttfr:
+          mean: 626.2672793285068
+          std: 22.03274566711385
+          values:
+          - 601.1516049911734
+          - 622.8543619945413
+          - 654.7958709998056
+        est_ppt:
+          mean: 624.3026186615074
+          std: 22.03274566711385
+          values:
+          - 599.186944324174
+          - 620.8897013275418
+          - 652.8312103328062
+        e2e_ttft:
+          mean: 626.2672793285068
+          std: 22.03274566711385
+          values:
+          - 601.1516049911734
+          - 622.8543619945413
+          - 654.7958709998056
+        throughput_over_time: null
+        requests_throughput_over_time: null
+      - concurrency: 1
+        context_size: 4
+        prompt_size: 512
+        response_size: 32
+        is_context_prefill_phase: true
+        pp_throughput:
+          mean: 2.4845697757507543
+          std: 0.04575848120058494
+          values:
+          - 2.53136375296463
+          - 2.422462314722818
+          - 2.499883259564815
+        pp_req_throughput:
+          mean: 2.4845697757507543
+          std: 0.04575848120058494
+          values:
+          - 2.53136375296463
+          - 2.422462314722818
+          - 2.499883259564815
+        tg_throughput:
+          mean: 17.635763866117845
+          std: 1.7094572003102013
+          values:
+          - 15.230876137895361
+          - 18.62431023019168
+          - 19.052105230266502
+        tg_req_throughput:
+          mean: 17.635763866117845
+          std: 1.7094572003102013
+          values:
+          - 15.230876137895361
+          - 18.62431023019168
+          - 19.052105230266502
+        peak_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        peak_req_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        ttfr:
+          mean: 404.58658534043934
+          std: 7.48017217273549
+          values:
+          - 397.0086360059213
+          - 414.76778000651393
+          - 401.9833400088828
+        est_ppt:
+          mean: 402.62192467343993
+          std: 7.48017217273549
+          values:
+          - 395.0439753389219
+          - 412.8031193395145
+          - 400.0186793418834
+        e2e_ttft:
+          mean: 404.58658534043934
+          std: 7.48017217273549
+          values:
+          - 397.0086360059213
+          - 414.76778000651393
+          - 401.9833400088828
+        throughput_over_time: null
+        requests_throughput_over_time: null
+      - concurrency: 1
+        context_size: 4
+        prompt_size: 512
+        response_size: 32
+        is_context_prefill_phase: false
+        pp_throughput:
+          mean: 618.4636213269806
+          std: 8.74132617220307
+          values:
+          - 615.0592559650656
+          - 609.87387040753
+          - 630.4577376083462
+        pp_req_throughput:
+          mean: 618.4636213269806
+          std: 8.74132617220307
+          values:
+          - 615.0592559650656
+          - 609.87387040753
+          - 630.4577376083462
+        tg_throughput:
+          mean: 17.45048850057408
+          std: 0.8100920586039865
+          values:
+          - 16.861215468163042
+          - 18.595972644192813
+          - 16.89427738936639
+        tg_req_throughput:
+          mean: 17.45048850057408
+          std: 0.8100920586039865
+          values:
+          - 16.861215468163042
+          - 18.595972644192813
+          - 16.89427738936639
+        peak_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        peak_req_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        ttfr:
+          mean: 856.409022337175
+          std: 12.533824216928174
+          values:
+          - 860.4185330041219
+          - 869.3571260082535
+          - 839.4514079991495
+        est_ppt:
+          mean: 854.4443616701756
+          std: 12.533824216928174
+          values:
+          - 858.4538723371224
+          - 867.3924653412541
+          - 837.4867473321501
+        e2e_ttft:
+          mean: 856.409022337175
+          std: 12.533824216928174
+          values:
+          - 860.4185330041219
+          - 869.3571260082535
+          - 839.4514079991495
+        throughput_over_time: null
+        requests_throughput_over_time: null
+      - concurrency: 1
+        context_size: 4
+        prompt_size: 1024
+        response_size: 32
+        is_context_prefill_phase: true
+        pp_throughput:
+          mean: 2.4486140031315737
+          std: 0.07189739945503786
+          values:
+          - 2.4300128397113485
+          - 2.544484508095415
+          - 2.3713446615879574
+        pp_req_throughput:
+          mean: 2.4486140031315737
+          std: 0.07189739945503786
+          values:
+          - 2.4300128397113485
+          - 2.544484508095415
+          - 2.3713446615879574
+        tg_throughput:
+          mean: 14.888096737020902
+          std: 2.853162215892838
+          values:
+          - 16.91375727331235
+          - 10.853127079455593
+          - 16.89740585829476
+        tg_req_throughput:
+          mean: 14.888096737020902
+          std: 2.853162215892838
+          values:
+          - 16.91375727331235
+          - 10.853127079455593
+          - 16.89740585829476
+        peak_throughput:
+          mean: 19.666666666666668
+          std: 0.4714045207910317
+          values:
+          - 20.0
+          - 19.0
+          - 20.0
+        peak_req_throughput:
+          mean: 19.666666666666668
+          std: 0.4714045207910317
+          values:
+          - 20.0
+          - 19.0
+          - 20.0
+        ttfr:
+          mean: 410.70767400378827
+          std: 11.878072524002638
+          values:
+          - 413.48512000695337
+          - 394.971572997747
+          - 423.66632900666445
+        est_ppt:
+          mean: 408.74301333678886
+          std: 11.878072524002638
+          values:
+          - 411.52045933995396
+          - 393.0069123307476
+          - 421.70166833966505
+        e2e_ttft:
+          mean: 410.70767400378827
+          std: 11.878072524002638
+          values:
+          - 413.48512000695337
+          - 394.971572997747
+          - 423.66632900666445
+        throughput_over_time: null
+        requests_throughput_over_time: null
+      - concurrency: 1
+        context_size: 4
+        prompt_size: 1024
+        response_size: 32
+        is_context_prefill_phase: false
+        pp_throughput:
+          mean: 784.2636712950256
+          std: 7.914289834443228
+          values:
+          - 773.0725132803038
+          - 789.709376713972
+          - 790.0091238908009
+        pp_req_throughput:
+          mean: 784.2636712950256
+          std: 7.914289834443228
+          values:
+          - 773.0725132803038
+          - 789.709376713972
+          - 790.0091238908009
+        tg_throughput:
+          mean: 17.38924093327101
+          std: 0.8257565333825901
+          values:
+          - 18.557036863274945
+          - 16.805870259207037
+          - 16.80481567733105
+        tg_req_throughput:
+          mean: 17.38924093327101
+          std: 0.8257565333825901
+          values:
+          - 18.557036863274945
+          - 16.805870259207037
+          - 16.80481567733105
+        peak_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        peak_req_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        ttfr:
+          mean: 1328.1943999997263
+          std: 14.389566290538706
+          values:
+          - 1348.5395059979055
+          - 1317.6385410042712
+          - 1318.405152997002
+        est_ppt:
+          mean: 1326.229739332727
+          std: 14.389566290538706
+          values:
+          - 1346.574845330906
+          - 1315.6738803372718
+          - 1316.4404923300026
+        e2e_ttft:
+          mean: 1328.1943999997263
+          std: 14.389566290538706
+          values:
+          - 1348.5395059979055
+          - 1317.6385410042712
+          - 1318.405152997002
+        throughput_over_time: null
+        requests_throughput_over_time: null
+      - concurrency: 1
+        context_size: 4
+        prompt_size: 2048
+        response_size: 32
+        is_context_prefill_phase: true
+        pp_throughput:
+          mean: 2.4279027026293676
+          std: 0.07243180061063449
+          values:
+          - 2.3325973527246178
+          - 2.443040514531162
+          - 2.5080702406323225
+        pp_req_throughput:
+          mean: 2.4279027026293676
+          std: 0.07243180061063449
+          values:
+          - 2.3325973527246178
+          - 2.443040514531162
+          - 2.5080702406323225
+        tg_throughput:
+          mean: 18.1591373136805
+          std: 0.9057378088719122
+          values:
+          - 16.904224293541898
+          - 18.564250729534805
+          - 19.008936917964796
+        tg_req_throughput:
+          mean: 18.1591373136805
+          std: 0.9057378088719122
+          values:
+          - 16.904224293541898
+          - 18.564250729534805
+          - 19.008936917964796
+        peak_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        peak_req_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        ttfr:
+          mean: 414.21318299641524
+          std: 12.418048436205773
+          values:
+          - 430.6713120022323
+          - 411.2906599912094
+          - 400.677576995804
+        est_ppt:
+          mean: 412.24852232941583
+          std: 12.418048436205773
+          values:
+          - 428.7066513352329
+          - 409.32599932421
+          - 398.71291632880457
+        e2e_ttft:
+          mean: 414.21318299641524
+          std: 12.418048436205773
+          values:
+          - 430.6713120022323
+          - 411.2906599912094
+          - 400.677576995804
+        throughput_over_time: null
+        requests_throughput_over_time: null
+      - concurrency: 1
+        context_size: 4
+        prompt_size: 2048
+        response_size: 32
+        is_context_prefill_phase: false
+        pp_throughput:
+          mean: 905.8314084003491
+          std: 5.747884019795737
+          values:
+          - 897.7252841700516
+          - 910.4091785579106
+          - 909.3597624730851
+        pp_req_throughput:
+          mean: 905.8314084003491
+          std: 5.747884019795737
+          values:
+          - 897.7252841700516
+          - 910.4091785579106
+          - 909.3597624730851
+        tg_throughput:
+          mean: 17.29330177853343
+          std: 0.896764171375758
+          values:
+          - 16.81744503442497
+          - 18.549291660472864
+          - 16.51316864070245
+        tg_req_throughput:
+          mean: 17.29330177853343
+          std: 0.896764171375758
+          values:
+          - 16.81744503442497
+          - 18.549291660472864
+          - 16.51316864070245
+        peak_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        peak_req_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        ttfr:
+          mean: 2280.626512336312
+          std: 14.522632416799429
+          values:
+          - 2301.1089940118836
+          - 2269.0771290072007
+          - 2271.6934139898513
+        est_ppt:
+          mean: 2278.6618516693125
+          std: 14.522632416799429
+          values:
+          - 2299.144333344884
+          - 2267.1124683402013
+          - 2269.728753322852
+        e2e_ttft:
+          mean: 2280.626512336312
+          std: 14.522632416799429
+          values:
+          - 2301.1089940118836
+          - 2269.0771290072007
+          - 2271.6934139898513
+        throughput_over_time: null
+        requests_throughput_over_time: null
+      - concurrency: 1
+        context_size: 4
+        prompt_size: 4096
+        response_size: 32
+        is_context_prefill_phase: true
+        pp_throughput:
+          mean: 2.483982422676426
+          std: 0.05078364882294376
+          values:
+          - 2.4899074940386283
+          - 2.5430048741186013
+          - 2.419034899872049
+        pp_req_throughput:
+          mean: 2.483982422676426
+          std: 0.05078364882294376
+          values:
+          - 2.4899074940386283
+          - 2.5430048741186013
+          - 2.419034899872049
+        tg_throughput:
+          mean: 17.172930745076687
+          std: 2.3738239969045196
+          values:
+          - 19.03394438363355
+          - 13.822706642674332
+          - 18.662141208922186
+        tg_req_throughput:
+          mean: 17.172930745076687
+          std: 2.3738239969045196
+          values:
+          - 19.03394438363355
+          - 13.822706642674332
+          - 18.662141208922186
+        peak_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        peak_req_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        ttfr:
+          mean: 404.71296999991563
+          std: 8.265693443088269
+          values:
+          - 403.5860069998307
+          - 395.20024199737236
+          - 415.35266100254375
+        est_ppt:
+          mean: 402.7483093329162
+          std: 8.265693443088269
+          values:
+          - 401.6213463328313
+          - 393.23558133037295
+          - 413.38800033554435
+        e2e_ttft:
+          mean: 404.71296999991563
+          std: 8.265693443088269
+          values:
+          - 403.5860069998307
+          - 395.20024199737236
+          - 415.35266100254375
+        throughput_over_time: null
+        requests_throughput_over_time: null
+      - concurrency: 1
+        context_size: 4
+        prompt_size: 4096
+        response_size: 32
+        is_context_prefill_phase: false
+        pp_throughput:
+          mean: 919.8258560709043
+          std: 25.983146409076355
+          values:
+          - 883.165412800313
+          - 935.9893358258502
+          - 940.3228195865498
+        pp_req_throughput:
+          mean: 919.8258560709043
+          std: 25.983146409076355
+          values:
+          - 883.165412800313
+          - 935.9893358258502
+          - 940.3228195865498
+        tg_throughput:
+          mean: 17.32958132847668
+          std: 0.8297276950741563
+          values:
+          - 18.502533169957626
+          - 16.77156687527494
+          - 16.714643940197487
+        tg_req_throughput:
+          mean: 17.32958132847668
+          std: 0.8297276950741563
+          values:
+          - 18.502533169957626
+          - 16.77156687527494
+          - 16.714643940197487
+        peak_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        peak_req_throughput:
+          mean: 20.0
+          std: 0.0
+          values:
+          - 20.0
+          - 20.0
+          - 20.0
+        ttfr:
+          mean: 4476.0157463266905
+          std: 128.85515183943608
+          values:
+          - 4657.94409600494
+          - 4394.1087189887185
+          - 4375.994423986413
+        est_ppt:
+          mean: 4474.051085659691
+          std: 128.85515183943608
+          values:
+          - 4655.97943533794
+          - 4392.144058321719
+          - 4374.029763319413
+        e2e_ttft:
+          mean: 4476.0157463266905
+          std: 128.85515183943608
+          values:
+          - 4657.94409600494
+          - 4394.1087189887185
+          - 4375.994423986413
+        throughput_over_time: null
+        requests_throughput_over_time: null
+    csv: "model,test_name,t_s_mean,t_s_std,t_s_req_mean,t_s_req_std,peak_ts_mean,peak_ts_std,peak_ts_req_mean,peak_ts_req_std,ttfr_mean,ttfr_std,est_ppt_mean,est_ppt_std,e2e_ttft_mean,e2e_ttft_std\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,ctx_pp @ d4,1.9732369539136438,0.5634883553632327,1.9732369539136438,0.5634883553632327,,,,,566.3991363398964,201.90300235875904,564.434475672897,201.90300235875904,566.3991363398964,201.90300235875904\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,ctx_tg @ d4,20.7276815625343,2.6450041299206624,20.7276815625343,2.6450041299206624,22.0,2.8284271247461903,22.0,2.8284271247461903,,,,,,\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,pp256 @ d4,436.17970464776766,13.986446265762545,436.17970464776766,13.986446265762545,,,,,626.2672793285068,22.03274566711385,624.3026186615074,22.03274566711385,626.2672793285068,22.03274566711385\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,tg32 @ d4,17.11937407694603,2.334035023270319,17.11937407694603,2.334035023270319,19.333333333333332,0.9428090415820634,19.333333333333332,0.9428090415820634,,,,,,\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,ctx_pp @ d4,2.4845697757507543,0.04575848120058494,2.4845697757507543,0.04575848120058494,,,,,404.58658534043934,7.48017217273549,402.62192467343993,7.48017217273549,404.58658534043934,7.48017217273549\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,ctx_tg @ d4,17.635763866117845,1.7094572003102013,17.635763866117845,1.7094572003102013,20.0,0.0,20.0,0.0,,,,,,\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,pp512 @ d4,618.4636213269806,8.74132617220307,618.4636213269806,8.74132617220307,,,,,856.409022337175,12.533824216928174,854.4443616701756,12.533824216928174,856.409022337175,12.533824216928174\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,tg32 @ d4,17.45048850057408,0.8100920586039865,17.45048850057408,0.8100920586039865,20.0,0.0,20.0,0.0,,,,,,\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,ctx_pp @ d4,2.4486140031315737,0.07189739945503786,2.4486140031315737,0.07189739945503786,,,,,410.70767400378827,11.878072524002638,408.74301333678886,11.878072524002638,410.70767400378827,11.878072524002638\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,ctx_tg @ d4,14.888096737020902,2.853162215892838,14.888096737020902,2.853162215892838,19.666666666666668,0.4714045207910317,19.666666666666668,0.4714045207910317,,,,,,\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,pp1024 @ d4,784.2636712950256,7.914289834443228,784.2636712950256,7.914289834443228,,,,,1328.1943999997263,14.389566290538706,1326.229739332727,14.389566290538706,1328.1943999997263,14.389566290538706\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,tg32 @ d4,17.38924093327101,0.8257565333825901,17.38924093327101,0.8257565333825901,20.0,0.0,20.0,0.0,,,,,,\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,ctx_pp @ d4,2.4279027026293676,0.07243180061063449,2.4279027026293676,0.07243180061063449,,,,,414.21318299641524,12.418048436205773,412.24852232941583,12.418048436205773,414.21318299641524,12.418048436205773\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,ctx_tg @ d4,18.1591373136805,0.9057378088719122,18.1591373136805,0.9057378088719122,20.0,0.0,20.0,0.0,,,,,,\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,pp2048 @ d4,905.8314084003491,5.747884019795737,905.8314084003491,5.747884019795737,,,,,2280.626512336312,14.522632416799429,2278.6618516693125,14.522632416799429,2280.626512336312,14.522632416799429\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,tg32 @ d4,17.29330177853343,0.896764171375758,17.29330177853343,0.896764171375758,20.0,0.0,20.0,0.0,,,,,,\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,ctx_pp @ d4,2.483982422676426,0.05078364882294376,2.483982422676426,0.05078364882294376,,,,,404.71296999991563,8.265693443088269,402.7483093329162,8.265693443088269,404.71296999991563,8.265693443088269\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,ctx_tg @ d4,17.172930745076687,2.3738239969045196,17.172930745076687,2.3738239969045196,20.0,0.0,20.0,0.0,,,,,,\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,pp4096 @ d4,919.8258560709043,25.983146409076355,919.8258560709043,25.983146409076355,,,,,4476.0157463266905,128.85515183943608,4474.051085659691,128.85515183943608,4476.0157463266905,128.85515183943608\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,tg32 @ d4,17.32958132847668,0.8297276950741563,17.32958132847668,0.8297276950741563,20.0,0.0,20.0,0.0,,,,,,\r\
+      \n"
+    stdout: '{"model": "rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm", "max_concurrency":
+      1, "benchmarks": [{"concurrency": 1, "context_size": 4, "prompt_size": 256,
+      "response_size": 32, "is_context_prefill_phase": true, "pp_throughput": {"mean":
+      1.9732369539136438, "std": 0.5634883553632327, "values": [1.1765379466453922,
+      2.386808441921629, 2.3563644731739104]}, "pp_req_throughput": {"mean": 1.9732369539136438,
+      "std": 0.5634883553632327, "values": [1.1765379466453922, 2.386808441921629,
+      2.3563644731739104]}, "tg_throughput": {"mean": 20.7276815625343, "std": 2.6450041299206624,
+      "values": [24.460738403266244, 18.655519392884877, 19.06678689145178]}, "tg_req_throughput":
+      {"mean": 20.7276815625343, "std": 2.6450041299206624, "values": [24.460738403266244,
+      18.655519392884877, 19.06678689145178]}, "peak_throughput": {"mean": 22.0, "std":
+      2.8284271247461903, "values": [26.0, 20.0, 20.0]}, "peak_req_throughput": {"mean":
+      22.0, "std": 2.8284271247461903, "values": [26.0, 20.0, 20.0]}, "ttfr": {"mean":
+      566.3991363398964, "std": 201.90300235875904, "values": [851.9159970019246,
+      420.9341860114364, 426.3472260063281]}, "est_ppt": {"mean": 564.434475672897,
+      "std": 201.90300235875904, "values": [849.9513363349251, 418.969525344437, 424.3825653393287]},
+      "e2e_ttft": {"mean": 566.3991363398964, "std": 201.90300235875904, "values":
+      [851.9159970019246, 420.9341860114364, 426.3472260063281]}, "throughput_over_time":
+      null, "requests_throughput_over_time": null}, {"concurrency": 1, "context_size":
+      4, "prompt_size": 256, "response_size": 32, "is_context_prefill_phase": false,
+      "pp_throughput": {"mean": 436.17970464776766, "std": 13.986446265762545, "values":
+      [452.2795474218189, 438.081030202996, 418.17853631848817]}, "pp_req_throughput":
+      {"mean": 436.17970464776766, "std": 13.986446265762545, "values": [452.2795474218189,
+      438.081030202996, 418.17853631848817]}, "tg_throughput": {"mean": 17.11937407694603,
+      "std": 2.334035023270319, "values": [13.826644494678707, 18.965809251507526,
+      18.56566848465186]}, "tg_req_throughput": {"mean": 17.11937407694603, "std":
+      2.334035023270319, "values": [13.826644494678707, 18.965809251507526, 18.56566848465186]},
+      "peak_throughput": {"mean": 19.333333333333332, "std": 0.9428090415820634, "values":
+      [18.0, 20.0, 20.0]}, "peak_req_throughput": {"mean": 19.333333333333332, "std":
+      0.9428090415820634, "values": [18.0, 20.0, 20.0]}, "ttfr": {"mean": 626.2672793285068,
+      "std": 22.03274566711385, "values": [601.1516049911734, 622.8543619945413, 654.7958709998056]},
+      "est_ppt": {"mean": 624.3026186615074, "std": 22.03274566711385, "values": [599.186944324174,
+      620.8897013275418, 652.8312103328062]}, "e2e_ttft": {"mean": 626.2672793285068,
+      "std": 22.03274566711385, "values": [601.1516049911734, 622.8543619945413, 654.7958709998056]},
+      "throughput_over_time": null, "requests_throughput_over_time": null}, {"concurrency":
+      1, "context_size": 4, "prompt_size": 512, "response_size": 32, "is_context_prefill_phase":
+      true, "pp_throughput": {"mean": 2.4845697757507543, "std": 0.04575848120058494,
+      "values": [2.53136375296463, 2.422462314722818, 2.499883259564815]}, "pp_req_throughput":
+      {"mean": 2.4845697757507543, "std": 0.04575848120058494, "values": [2.53136375296463,
+      2.422462314722818, 2.499883259564815]}, "tg_throughput": {"mean": 17.635763866117845,
+      "std": 1.7094572003102013, "values": [15.230876137895361, 18.62431023019168,
+      19.052105230266502]}, "tg_req_throughput": {"mean": 17.635763866117845, "std":
+      1.7094572003102013, "values": [15.230876137895361, 18.62431023019168, 19.052105230266502]},
+      "peak_throughput": {"mean": 20.0, "std": 0.0, "values": [20.0, 20.0, 20.0]},
+      "peak_req_throughput": {"mean": 20.0, "std": 0.0, "values": [20.0, 20.0, 20.0]},
+      "ttfr": {"mean": 404.58658534043934, "std": 7.48017217273549, "values": [397.0086360059213,
+      414.76778000651393, 401.9833400088828]}, "est_ppt": {"mean": 402.62192467343993,
+      "std": 7.48017217273549, "values": [395.0439753389219, 412.8031193395145, 400.0186793418834]},
+      "e2e_ttft": {"mean": 404.58658534043934, "std": 7.48017217273549, "values":
+      [397.0086360059213, 414.76778000651393, 401.9833400088828]}, "throughput_over_time":
+      null, "requests_throughput_over_time": null}, {"concurrency": 1, "context_size":
+      4, "prompt_size": 512, "response_size": 32, "is_context_prefill_phase": false,
+      "pp_throughput": {"mean": 618.4636213269806, "std": 8.74132617220307, "values":
+      [615.0592559650656, 609.87387040753, 630.4577376083462]}, "pp_req_throughput":
+      {"mean": 618.4636213269806, "std": 8.74132617220307, "values": [615.0592559650656,
+      609.87387040753, 630.4577376083462]}, "tg_throughput": {"mean": 17.45048850057408,
+      "std": 0.8100920586039865, "values": [16.861215468163042, 18.595972644192813,
+      16.89427738936639]}, "tg_req_throughput": {"mean": 17.45048850057408, "std":
+      0.8100920586039865, "values": [16.861215468163042, 18.595972644192813, 16.89427738936639]},
+      "peak_throughput": {"mean": 20.0, "std": 0.0, "values": [20.0, 20.0, 20.0]},
+      "peak_req_throughput": {"mean": 20.0, "std": 0.0, "values": [20.0, 20.0, 20.0]},
+      "ttfr": {"mean": 856.409022337175, "std": 12.533824216928174, "values": [860.4185330041219,
+      869.3571260082535, 839.4514079991495]}, "est_ppt": {"mean": 854.4443616701756,
+      "std": 12.533824216928174, "values": [858.4538723371224, 867.3924653412541,
+      837.4867473321501]}, "e2e_ttft": {"mean": 856.409022337175, "std": 12.533824216928174,
+      "values": [860.4185330041219, 869.3571260082535, 839.4514079991495]}, "throughput_over_time":
+      null, "requests_throughput_over_time": null}, {"concurrency": 1, "context_size":
+      4, "prompt_size": 1024, "response_size": 32, "is_context_prefill_phase": true,
+      "pp_throughput": {"mean": 2.4486140031315737, "std": 0.07189739945503786, "values":
+      [2.4300128397113485, 2.544484508095415, 2.3713446615879574]}, "pp_req_throughput":
+      {"mean": 2.4486140031315737, "std": 0.07189739945503786, "values": [2.4300128397113485,
+      2.544484508095415, 2.3713446615879574]}, "tg_throughput": {"mean": 14.888096737020902,
+      "std": 2.853162215892838, "values": [16.91375727331235, 10.853127079455593,
+      16.89740585829476]}, "tg_req_throughput": {"mean": 14.888096737020902, "std":
+      2.853162215892838, "values": [16.91375727331235, 10.853127079455593, 16.89740585829476]},
+      "peak_throughput": {"mean": 19.666666666666668, "std": 0.4714045207910317, "values":
+      [20.0, 19.0, 20.0]}, "peak_req_throughput": {"mean": 19.666666666666668, "std":
+      0.4714045207910317, "values": [20.0, 19.0, 20.0]}, "ttfr": {"mean": 410.70767400378827,
+      "std": 11.878072524002638, "values": [413.48512000695337, 394.971572997747,
+      423.66632900666445]}, "est_ppt": {"mean": 408.74301333678886, "std": 11.878072524002638,
+      "values": [411.52045933995396, 393.0069123307476, 421.70166833966505]}, "e2e_ttft":
+      {"mean": 410.70767400378827, "std": 11.878072524002638, "values": [413.48512000695337,
+      394.971572997747, 423.66632900666445]}, "throughput_over_time": null, "requests_throughput_over_time":
+      null}, {"concurrency": 1, "context_size": 4, "prompt_size": 1024, "response_size":
+      32, "is_context_prefill_phase": false, "pp_throughput": {"mean": 784.2636712950256,
+      "std": 7.914289834443228, "values": [773.0725132803038, 789.709376713972, 790.0091238908009]},
+      "pp_req_throughput": {"mean": 784.2636712950256, "std": 7.914289834443228, "values":
+      [773.0725132803038, 789.709376713972, 790.0091238908009]}, "tg_throughput":
+      {"mean": 17.38924093327101, "std": 0.8257565333825901, "values": [18.557036863274945,
+      16.805870259207037, 16.80481567733105]}, "tg_req_throughput": {"mean": 17.38924093327101,
+      "std": 0.8257565333825901, "values": [18.557036863274945, 16.805870259207037,
+      16.80481567733105]}, "peak_throughput": {"mean": 20.0, "std": 0.0, "values":
+      [20.0, 20.0, 20.0]}, "peak_req_throughput": {"mean": 20.0, "std": 0.0, "values":
+      [20.0, 20.0, 20.0]}, "ttfr": {"mean": 1328.1943999997263, "std": 14.389566290538706,
+      "values": [1348.5395059979055, 1317.6385410042712, 1318.405152997002]}, "est_ppt":
+      {"mean": 1326.229739332727, "std": 14.389566290538706, "values": [1346.574845330906,
+      1315.6738803372718, 1316.4404923300026]}, "e2e_ttft": {"mean": 1328.1943999997263,
+      "std": 14.389566290538706, "values": [1348.5395059979055, 1317.6385410042712,
+      1318.405152997002]}, "throughput_over_time": null, "requests_throughput_over_time":
+      null}, {"concurrency": 1, "context_size": 4, "prompt_size": 2048, "response_size":
+      32, "is_context_prefill_phase": true, "pp_throughput": {"mean": 2.4279027026293676,
+      "std": 0.07243180061063449, "values": [2.3325973527246178, 2.443040514531162,
+      2.5080702406323225]}, "pp_req_throughput": {"mean": 2.4279027026293676, "std":
+      0.07243180061063449, "values": [2.3325973527246178, 2.443040514531162, 2.5080702406323225]},
+      "tg_throughput": {"mean": 18.1591373136805, "std": 0.9057378088719122, "values":
+      [16.904224293541898, 18.564250729534805, 19.008936917964796]}, "tg_req_throughput":
+      {"mean": 18.1591373136805, "std": 0.9057378088719122, "values": [16.904224293541898,
+      18.564250729534805, 19.008936917964796]}, "peak_throughput": {"mean": 20.0,
+      "std": 0.0, "values": [20.0, 20.0, 20.0]}, "peak_req_throughput": {"mean": 20.0,
+      "std": 0.0, "values": [20.0, 20.0, 20.0]}, "ttfr": {"mean": 414.21318299641524,
+      "std": 12.418048436205773, "values": [430.6713120022323, 411.2906599912094,
+      400.677576995804]}, "est_ppt": {"mean": 412.24852232941583, "std": 12.418048436205773,
+      "values": [428.7066513352329, 409.32599932421, 398.71291632880457]}, "e2e_ttft":
+      {"mean": 414.21318299641524, "std": 12.418048436205773, "values": [430.6713120022323,
+      411.2906599912094, 400.677576995804]}, "throughput_over_time": null, "requests_throughput_over_time":
+      null}, {"concurrency": 1, "context_size": 4, "prompt_size": 2048, "response_size":
+      32, "is_context_prefill_phase": false, "pp_throughput": {"mean": 905.8314084003491,
+      "std": 5.747884019795737, "values": [897.7252841700516, 910.4091785579106, 909.3597624730851]},
+      "pp_req_throughput": {"mean": 905.8314084003491, "std": 5.747884019795737, "values":
+      [897.7252841700516, 910.4091785579106, 909.3597624730851]}, "tg_throughput":
+      {"mean": 17.29330177853343, "std": 0.896764171375758, "values": [16.81744503442497,
+      18.549291660472864, 16.51316864070245]}, "tg_req_throughput": {"mean": 17.29330177853343,
+      "std": 0.896764171375758, "values": [16.81744503442497, 18.549291660472864,
+      16.51316864070245]}, "peak_throughput": {"mean": 20.0, "std": 0.0, "values":
+      [20.0, 20.0, 20.0]}, "peak_req_throughput": {"mean": 20.0, "std": 0.0, "values":
+      [20.0, 20.0, 20.0]}, "ttfr": {"mean": 2280.626512336312, "std": 14.522632416799429,
+      "values": [2301.1089940118836, 2269.0771290072007, 2271.6934139898513]}, "est_ppt":
+      {"mean": 2278.6618516693125, "std": 14.522632416799429, "values": [2299.144333344884,
+      2267.1124683402013, 2269.728753322852]}, "e2e_ttft": {"mean": 2280.626512336312,
+      "std": 14.522632416799429, "values": [2301.1089940118836, 2269.0771290072007,
+      2271.6934139898513]}, "throughput_over_time": null, "requests_throughput_over_time":
+      null}, {"concurrency": 1, "context_size": 4, "prompt_size": 4096, "response_size":
+      32, "is_context_prefill_phase": true, "pp_throughput": {"mean": 2.483982422676426,
+      "std": 0.05078364882294376, "values": [2.4899074940386283, 2.5430048741186013,
+      2.419034899872049]}, "pp_req_throughput": {"mean": 2.483982422676426, "std":
+      0.05078364882294376, "values": [2.4899074940386283, 2.5430048741186013, 2.419034899872049]},
+      "tg_throughput": {"mean": 17.172930745076687, "std": 2.3738239969045196, "values":
+      [19.03394438363355, 13.822706642674332, 18.662141208922186]}, "tg_req_throughput":
+      {"mean": 17.172930745076687, "std": 2.3738239969045196, "values": [19.03394438363355,
+      13.822706642674332, 18.662141208922186]}, "peak_throughput": {"mean": 20.0,
+      "std": 0.0, "values": [20.0, 20.0, 20.0]}, "peak_req_throughput": {"mean": 20.0,
+      "std": 0.0, "values": [20.0, 20.0, 20.0]}, "ttfr": {"mean": 404.71296999991563,
+      "std": 8.265693443088269, "values": [403.5860069998307, 395.20024199737236,
+      415.35266100254375]}, "est_ppt": {"mean": 402.7483093329162, "std": 8.265693443088269,
+      "values": [401.6213463328313, 393.23558133037295, 413.38800033554435]}, "e2e_ttft":
+      {"mean": 404.71296999991563, "std": 8.265693443088269, "values": [403.5860069998307,
+      395.20024199737236, 415.35266100254375]}, "throughput_over_time": null, "requests_throughput_over_time":
+      null}, {"concurrency": 1, "context_size": 4, "prompt_size": 4096, "response_size":
+      32, "is_context_prefill_phase": false, "pp_throughput": {"mean": 919.8258560709043,
+      "std": 25.983146409076355, "values": [883.165412800313, 935.9893358258502, 940.3228195865498]},
+      "pp_req_throughput": {"mean": 919.8258560709043, "std": 25.983146409076355,
+      "values": [883.165412800313, 935.9893358258502, 940.3228195865498]}, "tg_throughput":
+      {"mean": 17.32958132847668, "std": 0.8297276950741563, "values": [18.502533169957626,
+      16.77156687527494, 16.714643940197487]}, "tg_req_throughput": {"mean": 17.32958132847668,
+      "std": 0.8297276950741563, "values": [18.502533169957626, 16.77156687527494,
+      16.714643940197487]}, "peak_throughput": {"mean": 20.0, "std": 0.0, "values":
+      [20.0, 20.0, 20.0]}, "peak_req_throughput": {"mean": 20.0, "std": 0.0, "values":
+      [20.0, 20.0, 20.0]}, "ttfr": {"mean": 4476.0157463266905, "std": 128.85515183943608,
+      "values": [4657.94409600494, 4394.1087189887185, 4375.994423986413]}, "est_ppt":
+      {"mean": 4474.051085659691, "std": 128.85515183943608, "values": [4655.97943533794,
+      4392.144058321719, 4374.029763319413]}, "e2e_ttft": {"mean": 4476.0157463266905,
+      "std": 128.85515183943608, "values": [4657.94409600494, 4394.1087189887185,
+      4375.994423986413]}, "throughput_over_time": null, "requests_throughput_over_time":
+      null}]}'

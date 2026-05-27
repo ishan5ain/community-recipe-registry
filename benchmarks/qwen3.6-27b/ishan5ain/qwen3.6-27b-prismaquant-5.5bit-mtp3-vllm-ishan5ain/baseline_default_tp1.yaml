@@ -1,0 +1,195 @@
+sparkrun_benchmark:
+  version: '1'
+  timestamp: '2026-05-27T06:38:10.531788+00:00'
+  recipe:
+    name: qwen3.6-27b-prismaquant-5.5bit-mtp3-vllm-ishan5ain
+    qualified_name: recipes/qwen3.6-27b/ishan5ain/qwen3.6-27b-prismaquant-5.5bit-mtp3-vllm-ishan5ain.yaml
+    type: sparkrun
+    model: rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm
+    container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest
+    runtime: vllm-distributed
+    registry: null
+    registry_git: ''
+    text: "recipe_version: '2'\nmodel: rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm\n\
+      runtime: vllm\nbuilder: eugr\nmax_nodes: 1\ncontainer: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest\n\
+      metadata:\n  description: \"Qwen3.6-27B mixed-precision quantization at 5.5\
+      \ bpp via PrismaQuant\\\n    \\ on DGX\\nSpark GB10. Uses a per-Linear sensitivity-driven\
+      \ allocator (multi-choice\\n\\\n    knapsack) to assign each Linear module its\
+      \ own format \\u2014 NVFP4 (bulk MLP +\\n\\\n    medium-sensitivity attention),\
+      \ MXFP8 (high-sensitivity dense), or BF16\\n(most-sensitive\\\n    \\ Linears\
+      \ + embed + norms). Selected as the Pareto knee of the\\n\\u0394loss-vs-bpp\\\
+      \n    \\ curve (Kneedle algorithm): below 5.5 bpp the loss curve\\nsteepens\
+      \ sharply, above\\\n    \\ 5.5 bpp the marginal gain per bit diminishes.\\n\\\
+      n\\u250C\\u2500\\u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u252C\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u252C\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      \n    \\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2510\\n\\u2502 Format   \\u2502 Count\\\n    \\      \\u2502 Use          \
+      \            \\u2502\\n\\u251C\\u2500\\u2500\\u2500\\u2500\\u2500\\\n    \\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\u253C\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\\n    \\u2500\\u2500\\u2500\\u2500\\u2500\\u253C\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2524\\n\\u2502 NVFP4    \\u2502 349       \\\n\
+      \    \\ \\u2502 Bulk dense MLPs,         \\u2502\\n\\u2502          \\u2502\
+      \            \\u2502\\\n    \\ medium-sensitivity attn,  \\u2502\\n\\u2502 \
+      \         \\u2502            \\u2502 most\\\n    \\ visual Linears       \\\
+      u2502\\n\\u2502 MXFP8    \\u2502  35        \\u2502 High-sensitivity\\\n   \
+      \ \\ dense    \\u2502\\n\\u2502 BF16     \\u2502 112+352    \\u2502 Top-sensitivity\
+      \ Linears,\\\n    \\  \\u2502\\n\\u2502          \\u2502            \\u2502\
+      \ norms, biases, embed     \\\n    \\ \\u2502\\n\\u2514\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2534\\\n    \\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2534\\\
+      \n    \\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\\n    \\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\
+      u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\\n    \\u2518\\n\\nModel size: ~19\
+      \ GB on disk (vs 54 GB BF16 source \\u2014 65% reduction).\\n\\\n    MTP speculative\
+      \ decoding at n=3 (optimal on DGX Spark; n=2 leaves ~10%\\ntok/s\\\n    \\ on\
+      \ the table, n=4 regresses). Multimodal (vision + text) via standard\\nimage-text-to-text\\\
+      \n    \\ API.\\n\\nvLLM only \\u2014 no transformers-native runtime path for\
+      \ this precision\\\n    \\ mix.\\nvLLM 0.11+ with compressed-tensors support\
+      \ required.\\n\\nArtifact by @RobTand.\\\n    \\ See https://huggingface.co/rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm\\\
+      n\"\n  maintainer: '@ishan5ain'\n  model_params: 27B\n  model_dtype: mixed\n\
+      \  kv_dtype: fp8\n  quantization: prismaquant (nvfp4+mxfp8+bf16)\n  quant_bits:\
+      \ 5\n  num_layers: 64\n  num_kv_heads: 4\n  head_dim: 256\ndefaults:\n  port:\
+      \ 8000\n  host: 0.0.0.0\n  tensor_parallel: 1\n  pipeline_parallel: 1\n  gpu_memory_utilization:\
+      \ 0.9\n  dtype: bfloat16\n  kv_cache_dtype: fp8\n  max_model_len: 32768\n  max_num_batched_tokens:\
+      \ 32768\n  max_num_seqs: 8\n  attention_backend: flashinfer\n  quantization:\
+      \ compressed-tensors\n  tool_call_parser: qwen3_coder\n  reasoning_parser: qwen3\n\
+      \  speculative_config: '{\"method\":\"mtp\",\"num_speculative_tokens\":3}'\n\
+      \  served_model_name: qwen3.6-prismaquant-5.5bit\nenv:\n  VLLM_MARLIN_USE_ATOMIC_ADD:\
+      \ '1'\n  VLLM_NVFP4_GEMM_BACKEND: flashinfer-cutlass\n  XDG_CACHE_HOME: /cache/huggingface\n\
+      \  VLLM_CACHE_ROOT: /cache/huggingface/vllm\ncommand: |\n  vllm serve {model}\
+      \ \\\n    --host {host} \\\n    --port {port} \\\n    --served-model-name {served_model_name}\
+      \ \\\n    --tensor-parallel-size {tensor_parallel} \\\n    --pipeline-parallel-size\
+      \ {pipeline_parallel} \\\n    --gpu-memory-utilization {gpu_memory_utilization}\
+      \ \\\n    --dtype {dtype} \\\n    --kv-cache-dtype {kv_cache_dtype} \\\n   \
+      \ --max-model-len {max_model_len} \\\n    --max-num-batched-tokens {max_num_batched_tokens}\
+      \ \\\n    --max-num-seqs {max_num_seqs} \\\n    --trust-remote-code \\\n   \
+      \ --quantization {quantization} \\\n    --enable-auto-tool-choice \\\n    --tool-call-parser\
+      \ {tool_call_parser} \\\n    --reasoning-parser {reasoning_parser} \\\n    --attention-backend\
+      \ {attention_backend} \\\n    --enable-prefix-caching \\\n    --speculative-config\
+      \ '{speculative_config}' \\\n    --seed 0\n"
+    hash: 5fb53fb8dca3e574cee7b73374d82504ac3ae23d28f44b75efd3db13fede9584
+  model:
+    dtype: mixed
+    params: 27B
+    num_layers: 64
+    num_kv_heads: 4
+    head_dim: 256
+    quantization: prismaquant (nvfp4+mxfp8+bf16)
+    quant_bits: 5.5
+    kv_dtype: fp8
+  cluster:
+    tp: 1
+    cluster_id: sparkrun_a049933935a1
+    runtime_info: {}
+  benchmark:
+    framework: llama-benchy
+    profile: null
+    args:
+      pp:
+      - 2048
+      depth:
+      - 0
+      prefix_caching: true
+      served_model_name: qwen3.6-prismaquant-5.5bit
+      exit_on_first_fail: true
+  results:
+    json:
+      model: rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm
+      max_concurrency: 1
+      benchmarks:
+      - concurrency: 1
+        context_size: 0
+        prompt_size: 2048
+        response_size: 32
+        is_context_prefill_phase: false
+        pp_throughput:
+          mean: 847.9423519390895
+          std: 70.68248497775313
+          values:
+          - 747.9881487043845
+          - 898.8620381584333
+          - 896.9768689544507
+        pp_req_throughput:
+          mean: 847.9423519390895
+          std: 70.68248497775313
+          values:
+          - 747.9881487043845
+          - 898.8620381584333
+          - 896.9768689544507
+        tg_throughput:
+          mean: 20.396310940595104
+          std: 2.517300098769854
+          values:
+          - 22.15457773748353
+          - 22.197955989564974
+          - 16.83639909473681
+        tg_req_throughput:
+          mean: 20.396310940595104
+          std: 2.517300098769854
+          values:
+          - 22.15457773748353
+          - 22.197955989564974
+          - 16.83639909473681
+        peak_throughput:
+          mean: 22.0
+          std: 1.4142135623730951
+          values:
+          - 23.0
+          - 23.0
+          - 20.0
+        peak_req_throughput:
+          mean: 22.0
+          std: 1.4142135623730951
+          values:
+          - 23.0
+          - 23.0
+          - 20.0
+        ttfr:
+          mean: 2437.1514713323754
+          std: 215.6311024644005
+          values:
+          - 2742.087356004049
+          - 2282.288073998643
+          - 2287.0789839944337
+        est_ppt:
+          mean: 2434.412330335666
+          std: 215.6311024644005
+          values:
+          - 2739.3482150073396
+          - 2279.5489330019336
+          - 2284.339842997724
+        e2e_ttft:
+          mean: 2437.1514713323754
+          std: 215.6311024644005
+          values:
+          - 2742.087356004049
+          - 2282.288073998643
+          - 2287.0789839944337
+        throughput_over_time: null
+        requests_throughput_over_time: null
+    csv: "model,test_name,t_s_mean,t_s_std,t_s_req_mean,t_s_req_std,peak_ts_mean,peak_ts_std,peak_ts_req_mean,peak_ts_req_std,ttfr_mean,ttfr_std,est_ppt_mean,est_ppt_std,e2e_ttft_mean,e2e_ttft_std\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,pp2048,847.9423519390895,70.68248497775313,847.9423519390895,70.68248497775313,,,,,2437.1514713323754,215.6311024644005,2434.412330335666,215.6311024644005,2437.1514713323754,215.6311024644005\r\
+      \nrdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm,tg32,20.396310940595104,2.517300098769854,20.396310940595104,2.517300098769854,22.0,1.4142135623730951,22.0,1.4142135623730951,,,,,,\r\
+      \n"
+    stdout: '{"model": "rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm", "max_concurrency":
+      1, "benchmarks": [{"concurrency": 1, "context_size": 0, "prompt_size": 2048,
+      "response_size": 32, "is_context_prefill_phase": false, "pp_throughput": {"mean":
+      847.9423519390895, "std": 70.68248497775313, "values": [747.9881487043845, 898.8620381584333,
+      896.9768689544507]}, "pp_req_throughput": {"mean": 847.9423519390895, "std":
+      70.68248497775313, "values": [747.9881487043845, 898.8620381584333, 896.9768689544507]},
+      "tg_throughput": {"mean": 20.396310940595104, "std": 2.517300098769854, "values":
+      [22.15457773748353, 22.197955989564974, 16.83639909473681]}, "tg_req_throughput":
+      {"mean": 20.396310940595104, "std": 2.517300098769854, "values": [22.15457773748353,
+      22.197955989564974, 16.83639909473681]}, "peak_throughput": {"mean": 22.0, "std":
+      1.4142135623730951, "values": [23.0, 23.0, 20.0]}, "peak_req_throughput": {"mean":
+      22.0, "std": 1.4142135623730951, "values": [23.0, 23.0, 20.0]}, "ttfr": {"mean":
+      2437.1514713323754, "std": 215.6311024644005, "values": [2742.087356004049,
+      2282.288073998643, 2287.0789839944337]}, "est_ppt": {"mean": 2434.412330335666,
+      "std": 215.6311024644005, "values": [2739.3482150073396, 2279.5489330019336,
+      2284.339842997724]}, "e2e_ttft": {"mean": 2437.1514713323754, "std": 215.6311024644005,
+      "values": [2742.087356004049, 2282.288073998643, 2287.0789839944337]}, "throughput_over_time":
+      null, "requests_throughput_over_time": null}]}'
