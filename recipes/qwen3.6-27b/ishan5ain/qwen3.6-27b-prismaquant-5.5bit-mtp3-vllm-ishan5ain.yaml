@@ -1,0 +1,93 @@
+recipe_version: "2"
+model: rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm
+runtime: vllm
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest
+max_nodes: 1
+
+metadata:
+  description: |
+    Qwen3.6-27B mixed-precision quantization at 5.5 bpp via PrismaQuant on DGX
+    Spark GB10. Uses a per-Linear sensitivity-driven allocator (multi-choice
+    knapsack) to assign each Linear module its own format — NVFP4 (bulk MLP +
+    medium-sensitivity attention), MXFP8 (high-sensitivity dense), or BF16
+    (most-sensitive Linears + embed + norms). Selected as the Pareto knee of the
+    Δloss-vs-bpp curve (Kneedle algorithm): below 5.5 bpp the loss curve
+    steepens sharply, above 5.5 bpp the marginal gain per bit diminishes.
+
+    ┌──────────┬────────────┬──────────────────────────┐
+    │ Format   │ Count      │ Use                      │
+    ├──────────┼────────────┼──────────────────────────┤
+    │ NVFP4    │ 349        │ Bulk dense MLPs,         │
+    │          │            │ medium-sensitivity attn,  │
+    │          │            │ most visual Linears       │
+    │ MXFP8    │  35        │ High-sensitivity dense    │
+    │ BF16     │ 112+352    │ Top-sensitivity Linears,  │
+    │          │            │ norms, biases, embed      │
+    └──────────┴────────────┴──────────────────────────┘
+
+    Model size: ~19 GB on disk (vs 54 GB BF16 source — 65% reduction).
+    MTP speculative decoding at n=3 (optimal on DGX Spark; n=2 leaves ~10%
+    tok/s on the table, n=4 regresses). Multimodal (vision + text) via standard
+    image-text-to-text API.
+
+    vLLM only — no transformers-native runtime path for this precision mix.
+    vLLM 0.11+ with compressed-tensors support required.
+
+    Artifact by @RobTand. See https://huggingface.co/rdtand/Qwen3.6-27B-PrismaQuant-5.5bit-vllm
+  maintainer: "@ishan5ain"
+  model_params: 27B
+  model_dtype: mixed
+  kv_dtype: fp8
+  quantization: prismaquant (nvfp4+mxfp8+bf16)
+  quant_bits: 5.5
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 1
+  pipeline_parallel: 1
+  gpu_memory_utilization: 0.90
+  dtype: bfloat16
+  kv_cache_dtype: fp8
+  max_model_len: 32768
+  max_num_batched_tokens: 32768
+  max_num_seqs: 8
+  attention_backend: flashinfer
+  quantization: compressed-tensors
+  tool_call_parser: qwen3_coder
+  reasoning_parser: qwen3
+  speculative_config: '{"method":"mtp","num_speculative_tokens":3}'
+  served_model_name: qwen3.6-prismaquant-5.5bit
+
+env:
+  VLLM_MARLIN_USE_ATOMIC_ADD: "1"
+  # Pin the NVFP4 GEMM backend to flashinfer-cutlass explicitly
+  # (auto-detected, but explicit avoids ambiguity)
+  VLLM_NVFP4_GEMM_BACKEND: flashinfer-cutlass
+  # Persist triton/torch compile caches across container launches
+  # (sparkrun mounts ~/.cache/huggingface -> /cache/huggingface)
+  XDG_CACHE_HOME: /cache/huggingface
+  VLLM_CACHE_ROOT: /cache/huggingface/vllm
+
+command: |
+  vllm serve {model} \
+    --host {host} \
+    --port {port} \
+    --served-model-name {served_model_name} \
+    --tensor-parallel-size {tensor_parallel} \
+    --pipeline-parallel-size {pipeline_parallel} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --dtype {dtype} \
+    --kv-cache-dtype {kv_cache_dtype} \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --max-num-seqs {max_num_seqs} \
+    --trust-remote-code \
+    --quantization {quantization} \
+    --enable-auto-tool-choice \
+    --tool-call-parser {tool_call_parser} \
+    --reasoning-parser {reasoning_parser} \
+    --attention-backend {attention_backend} \
+    --enable-prefix-caching \
+    --speculative-config '{speculative_config}' \
+    --seed 0
