@@ -46,18 +46,26 @@ defaults:
   host: 0.0.0.0
   tensor_parallel: 1
   pipeline_parallel: 1
-  gpu_memory_utilization: 0.90
+  gpu_memory_utilization: 0.70
   dtype: bfloat16
   kv_cache_dtype: fp8
-  max_model_len: 32768
-  max_num_batched_tokens: 32768
-  max_num_seqs: 8
+  max_model_len: 262144
+  max_num_batched_tokens: 64000
+  max_num_seqs: 2
   attention_backend: flashinfer
   quantization: compressed-tensors
   tool_call_parser: qwen3_coder
   reasoning_parser: qwen3
   speculative_config: '{"method":"mtp","num_speculative_tokens":3}'
   served_model_name: qwen3.6-prismaquant-5.5bit
+
+# Pin vLLM to stable release v0.21.0 instead of nightly main branch.
+# Nightly (v0.21.1rc1.dev) has confirmed bugs:
+#   - Negative CUDA graph memory estimate (-0.99 GiB) corrupting KV cache budgeting
+#   - Triton JIT compilation during inference conflicting with FlashInfer AOT kernels
+# This triggers eugr builder to rebuild wheels from the v0.21.0 tag (~20-40 min first build).
+runtime_config:
+  build_args: [--vllm-ref, v0.21.0]
 
 env:
   VLLM_MARLIN_USE_ATOMIC_ADD: "1"
