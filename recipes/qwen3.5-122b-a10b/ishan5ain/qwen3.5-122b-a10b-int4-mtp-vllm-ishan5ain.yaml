@@ -1,0 +1,85 @@
+recipe_version: "2"
+model: Intel/Qwen3.5-122B-A10B-int4-AutoRound
+runtime: vllm
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest
+
+metadata:
+  description: |
+    Qwen3.5-122B-A10B Intel AutoRound INT4 on DGX Spark GB10 — quality-first config
+    optimised for agentic coding (OpenCode, Aider, Cursor alternatives).
+
+    **Why AutoRound INT4 over NVFP4 for coding:**
+    Intel's AutoRound uses signed gradient descent to jointly optimise weight rounding
+    and clipping ranges, preserving the MoE routing distribution. Weights are stored as
+    INT4 but dequantised to bfloat16 on-the-fly by SM121 Tensor Cores — you get the
+    bandwidth savings of 4-bit storage with full BF16 precision for the actual math.
+
+    Community consensus (NVIDIA GB10 forums): this is the daily-driver pick for agentic
+    coding. At 130K+ context, BF16 KV cache keeps the model following instructions,
+    staying on task, and providing insights — properties that degrade with aggressive
+    FP4 quantisation.
+
+    Prefix caching is CRITICAL: OpenCode sends ~90% identical prompts repeatedly.
+    vLLM's prefix cache means TTFT stays sub-second after warmup regardless of context
+    size, since only new tokens are prefilled.
+
+    **Performance:** ~24-30 tok/s sustained single-stream. Slower than hybrid FP8 configs
+    but the quality difference is measurable in agentic workflows — fewer re-runs, less
+    oversight needed, fewer tool-call hallucinations. As the community puts it:
+    "Quality = Speed" because fast wrong answers are slow overall.
+
+    Model: ~75 GB on disk, 63 GiB loaded into unified memory. Ample room for KV cache.
+
+    **Sources:**
+    - NVIDIA Dev Forums DGX Spark/GB10 thread #365639 (Albond optimisation chain)
+    - NVIDIA Dev Forums "Best models/configs for agentic coding" thread #366825
+    - NVIDIA Dev Forums "Bfloat16 Quality = Speed?" thread #366828 (@whpthomas daily driver config)
+    - spark-vllm-docker recipes (eugr)
+  maintainer: "@ishan5ain"
+  model_params: 122B (10B active MoE)
+  model_dtype: int4-autoround
+  kv_dtype: bfloat16
+  quantization: autoround-int4
+  quant_bits: 4
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 1
+  pipeline_parallel: 1
+  gpu_memory_utilization: 0.82
+  dtype: bfloat16
+  max_model_len: 196608
+  max_num_batched_tokens: 32768
+  max_num_seqs: 8
+  attention_backend: flashinfer
+  speculative_config: '{"method":"mtp","num_speculative_tokens":2}'
+  tool_call_parser: qwen3_coder
+  reasoning_parser: qwen3
+  override_generation_config: '{"temperature":0.7,"top_p":0.95,"top_k":20,"min_p":0.0,"presence_penalty":0.0,"repetition_penalty":1.0}'
+
+env:
+  VLLM_MARLIN_USE_ATOMIC_ADD: "1"
+  VLLM_HTTP_TIMEOUT_KEEP_ALIVE: "600"
+
+command: |
+  vllm serve {model} \
+    --host {host} \
+    --port {port} \
+    --tensor-parallel-size {tensor_parallel} \
+    --pipeline-parallel-size {pipeline_parallel} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --dtype {dtype} \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --max-num-seqs {max_num_seqs} \
+    --trust-remote-code \
+    --enable-auto-tool-choice \
+    --tool-call-parser {tool_call_parser} \
+    --reasoning-parser {reasoning_parser} \
+    --attention-backend {attention_backend} \
+    --enable-prefix-caching \
+    --enable-chunked-prefill \
+    --speculative-config '{speculative_config}' \
+    --override-generation-config '{override_generation_config}' \
+    --seed 0

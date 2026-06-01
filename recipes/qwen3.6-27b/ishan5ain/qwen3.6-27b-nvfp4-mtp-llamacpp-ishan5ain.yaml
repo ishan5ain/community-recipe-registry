@@ -1,0 +1,80 @@
+recipe_version: "2"
+model: nilayparikh/Qwen3.6-27B-Text-NVFP4-MTP-GGUF:qwen3.6-27b-text-nvfp4-mtp.gguf
+runtime: llama-cpp
+container: ghcr.io/spark-arena/dgx-llama-cpp:latest
+max_nodes: 1
+
+metadata:
+    description: |
+        Qwen3.6-27B NVFP4 + MTP via llama.cpp on DGX Spark GB10.
+
+        Uses nilayparikh/Qwen3.6-27B-Text-NVFP4-MTP-GGUF — a GGUF conversion of
+        sakamakismile's modelopt-quantized NVFP4 variant (Qwen3.6-27B-Text-NVFP4-MTP)
+        with the MTP head preserved in BF16 for native speculative decoding.
+
+        Key differentiator: MTP speculative decoding uses the model's own built-in
+        MTP heads via `-mtp-n 3` — no external draft model needed. This avoids the
+        ~1.7 GB download and extra GPU memory (~1.6 GiB draft + ~4 GiB KV cache)
+        required by DFlash-based recipes, while delivering competitive throughput.
+
+        Text-only (vision tower stripped). Weights ~19.7 GB (GGUF with NVFP4 quant
+        + BF16 MTP head). Total GPU memory ~24-30 GB depending on context length.
+
+        Expected: ~40 tok/s with short prompts, ~25-35 tok/s at 192K context
+        (based on model author's DGX Spark benchmarks with speedhack fork).
+        Real-world sustained throughput on stock llama.cpp is TBD — see
+        @recipes/qwen3.6-27b/ishan5ain/LEARNINGS.md for context on how
+        speculative decoding performance varies on GB10.
+    maintainer: "@ishan5ain"
+    model_params: 27B
+    model_dtype: nvfp4
+    kv_dtype: f16
+    quantization: nvfp4
+    quant_bits: 4
+
+defaults:
+    port: 8000
+    host: 0.0.0.0
+    ctx_size: 32768
+    batch_size: 2048
+    ubatch_size: 512
+    mtp_n: 3
+    n_gpu_layers: 99
+    temp: 0.6
+    top_p: 0.95
+    top_k: 20
+    min_p: 0.05
+    presence_penalty: 0.0
+    repeat_penalty: 1.0
+    spec_type: "draft-mtp"
+    alias: "Qwen3.6-27B-TXT-NVFP4-MTP-SHORT"
+
+env:
+    GGML_CUDA_ENABLE_UNIFIED_MEMORY: "1"
+    # Disable mmap to avoid potential issues with large unified memory mappings
+    # on DGX Spark. Remove if the model loads successfully without this.
+
+command: |
+    llama-server \
+      -hf {model} \
+      --host {host} \
+      --port {port} \
+      --alias {alias} \
+      --n-gpu-layers {n_gpu_layers} \
+      --ctx-size {ctx_size} \
+      --batch-size {batch_size} \
+      --ubatch-size {ubatch_size} \
+      --flash-attn on \
+      --jinja \
+      --reasoning on \
+      --temp {temp} \
+      --presence-penalty {presence_penalty} \
+      --repeat-penalty {repeat_penalty} \
+      --chat-template-kwargs '{"preserve_thinking": true}' \
+      --top-p {top_p} \
+      --top-k {top_k} \
+      --min-p {min_p} \
+      --spec-type {spec_type}\
+      --spec-draft-n-max {mtp_n} \
+      --cont-batching \
+      --mlock

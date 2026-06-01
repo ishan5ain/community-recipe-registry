@@ -24,6 +24,8 @@
 | 5 | llama.cpp DFlash (thinking) | Q4_K_M (GGUF) | DFlash | llama.cpp | ✅ Working | 21.9 | ~16 GiB |
 | 6 | NVFP4 + MTP (modelopt) | NVFP4 (modelopt) | MTP (2 tok) | vLLM | ✅ Working | 16.9 | 18.65 GiB |
 | 7 | SGLang FP8 + MTP | FP8 | EAGLE (6 tok) | SGLang | ✅ Working | 15.45 | 28.75 GiB |
+| 8 | **NVFP4+MTP GGUF (llama.cpp)** | NVFP4 (GGUF) | MTP (3 tok, built-in) | llama.cpp | 🆕 Drafted | TBD | ~19.7 GiB |
+| 9 | **NVFP4+MTP GGUF LongCtx (llama.cpp)** | NVFP4 (GGUF) | MTP (3 tok) + YaRN 192K | llama.cpp | 🆕 Drafted | TBD | ~19.7 GiB |
 
 ---
 
@@ -584,3 +586,56 @@ Not directly applicable to our 27B dense focus, but worth noting for future expl
 ---
 
 *Testing conducted May 24-25, 2026 on ASUS Ascent GX10 (NVIDIA GB10)*
+
+---
+
+## Recipes 8 & 9: NVFP4+MTP GGUF (llama.cpp) — Drafted
+
+**Files:**
+- `qwen3.6-27b-nvfp4-mtp-llamacpp-ishan5ain.yaml` (base, short context)
+- `qwen3.6-27b-nvfp4-mtp-longctx-llamacpp-ishan5ain.yaml` (192K YaRN variant)
+
+**Model:** [nilayparikh/Qwen3.6-27B-Text-NVFP4-MTP-GGUF](https://huggingface.co/nilayparikh/Qwen3.6-27B-Text-NVFP4-MTP-GGUF)
+
+**Status:** 🆕 Drafted — not yet run on DGX Spark
+
+| Metric | Expected (Base) | Expected (LongCtx) | Source of Estimate |
+|--------|:--------------:|:------------------:|--------------------|
+| Decode speed (short) | **18-30 tok/s** | — | Extrapolated from HF card + DFlash baselines |
+| Decode speed (192K) | — | **15-25 tok/s** | HF card + YaRN overhead |
+| Model weights | ~19.7 GiB (GGUF) | ~19.7 GiB (GGUF) | HF API (`usedStorage`) |
+| MTP depth | 3 tokens (`-mtp-n 3`) | 3 tokens | Built into GGUF by modelopt |
+| External draft model? | ❌ None needed | ❌ None needed | MTP heads are baked in |
+| Startup time | Fast (seconds) | Fast (seconds) | llama.cpp, no autotune |
+| Container | Stock `ghcr.io/spark-arena/dgx-llama-cpp:latest` | Same | Requires `-mtp-n` support |
+
+### Key Differences from Recipe 6 (NVFP4+MTP modelopt via vLLM)
+
+| Aspect | Recipe 6 (vLLM) | Recipe 8 (llama.cpp GGUF) |
+|--------|----------------|--------------------------|
+| Weight format | ModelOpt safetensors | GGUF (compiled) |
+| Weight size | ~18.65 GiB | ~19.7 GiB |
+| Runtime | vLLM (Python+PyTorch) | llama.cpp (C++) |
+| MTP depth | 2 tokens | 3 tokens |
+| FlashInfer autotune | ~12 min first run | ❌ Not needed |
+| torch.compile | ~2 min | ❌ Not needed |
+| MTP acceptance (GB10) | 64-91% (proven) | TBD (likely similar) |
+| External draft model | No | No |
+| API | OpenAI-compatible (vLLM) | OpenAI-compatible (llama-server) |
+
+### Why This May Be Faster Than Recipe 6
+
+1. **No Python overhead** — llama.cpp is a native C++ binary with no GIL, no PyTorch dispatch, no CUDA graph capture overhead.
+2. **No autotune** — vLLM spends ~12 min on FlashInfer autotune (cached after first run, but still a cold-start tax). llama.cpp uses flash attention directly.
+3. **Deeper speculation** — 3 MTP tokens vs vLLM's 2 may provide higher acceptance (though diminishing returns past 2).
+4. **Lighter memory pressure** — GGUF is a serialized format that maps directly into GPU memory without transformation, unlike safetensors which require tensor reconstruction.
+
+### Why It May Be Slower Than DFlash (Recipes 4/5)
+
+1. **DFlash achieved 58% token acceptance** — this is proven on GB10 with the speedhack fork.
+2. **MTP acceptance is TBD** — if llama.cpp's MTP implementation has lower acceptance than DFlash, throughput suffers.
+3. **NVFP4 GGUF is a new format** — the GGML CUDA backend may not have fully optimized NVFP4 kernels for SM 12.1 yet.
+
+### Detailed Analysis
+
+See `ANALYSIS-nvfp4-mtp-gguf.md` for the full comparison against all seven existing recipes, including throughput hypotheses, critical unknowns, and a recommended benchmarking plan.

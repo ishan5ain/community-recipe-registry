@@ -1,0 +1,118 @@
+recipe_version: "2"
+model: Intel/Qwen3.5-122B-A10B-int4-AutoRound
+runtime: vllm
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest
+
+metadata:
+  description: |
+    Qwen3.5-122B-A10B AutoRound INT4 on DGX Spark GB10 — speed-optimised config
+    targeting ~50 tok/s single-stream via hybrid INT4+FP8 dense layers and INT8 LM head.
+
+    **IMPORTANT — pre-flight checklist (this recipe is NOT drop-in):**
+
+    This config targets the performance ceiling documented in Albond's optimisation
+    chain (https://github.com/albond/DGX_Spark_Qwen3.5-122B-A10B-AR-INT4):
+
+      Baseline INT4               28.3 tok/s
+      + Hybrid INT4+FP8 dense     30.8 tok/s  (+8.8%)
+      + MTP-2 speculative          38.4 tok/s  (+35.7%)
+      + INT8 LM Head v2            51.0 tok/s  (+80%)
+      + Triton autotune + PR#38325 52.0 tok/s  (+82%)
+
+    Achieving these numbers requires:
+
+      1. A hybrid checkpoint with FP8 shared-expert dense layers merged from the
+         official Qwen FP8 checkpoint into the Intel INT4 AutoRound base. This is
+         built by Albond's `patches/01-hybrid-int4-fp8/build-hybrid-checkpoint.py`
+         (~20 min build, requires ~75 GB source + output space).
+
+      2. MTP-2 speculative weights added via Albond's
+         `patches/02-mtp-speculative/add-mtp-weights.py`.
+
+      3. INT8 LM Head v2 patch applied (Triton kernel with @triton.autotune for
+         SM121-specific tuning).
+
+      4. A custom-built container that includes the above patches and the vLLM
+         PR #38325 cherry-pick (swapAB FP8 GEMM optimisation for SM120/SM121).
+
+    **If you have NOT built the hybrid checkpoint and patched container:**
+    This recipe will fall back to baseline INT4 behaviour (~28-30 tok/s with MTP-2,
+    no hybrid/INT8 LM head benefit). To get the full 50+ tok/s, follow Albond's
+    `./install.sh` pipeline first:
+
+      git clone https://github.com/albond/DGX_Spark_Qwen3.5-122B-A10B-AR-INT4.git
+      cd DGX_Spark_Qwen3.5-122B-A10B-AR-INT4
+      ./install.sh --launch
+
+    Then point this recipe's `model` field to your hybrid checkpoint path.
+
+    **Quality tradeoff:** Hybrid FP8 dense layers and INT8 LM head add marginal
+    quality risk vs pure INT4+BF16. For structured output (JSON KIE) the difference
+    is negligible. For open-ended reasoning at 130K+ context, the quality-first
+    recipe (`qwen3.5-122b-a10b-int4-mtp-vllm-ishan5ain`) may still follow
+    instructions more faithfully.
+
+    Benchmarks (v2.4 cross-prompt averages, measured 2026-05-09):
+      Q&A (256 tok out)      51.3 tok/s
+      Code (512 tok out)     52.8 tok/s
+      JSON (1024 tok out)    51.1 tok/s
+      Math (64 tok out)      47.8 tok/s
+      LongCode (2048 tok out) 54.9 tok/s
+
+    Context: 256K supported (355K token KV cache pool).
+
+    **Sources:**
+    - Albond DGX_Spark_Qwen3.5-122B-A10B-AR-INT4 repo + NVIDIA Dev Forums #365639
+    - Robrobbes2 verified results (post on thread #365639): 50-55 tok/s confirmed
+    - DocAI Blog comprehensive NVFP4 vs INT4 comparison (docai.hu)
+    - "Fastest Qwen 3.5 122B Int4 recipe" Spark Arena thread #370834
+  maintainer: "@ishan5ain"
+  model_params: 122B (10B active MoE)
+  model_dtype: int4-autoround + fp8-hybrid-dense
+  kv_dtype: bfloat16
+  quantization: autoround-int4 + hybrid-fp8-dense + int8-lm-head
+  quant_bits: 4
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 1
+  pipeline_parallel: 1
+  gpu_memory_utilization: 0.90
+  dtype: bfloat16
+  kv_cache_dtype: auto
+  max_model_len: 262144
+  max_num_batched_tokens: 32768
+  max_num_seqs: 8
+  attention_backend: flashinfer
+  speculative_config: '{"method":"mtp","num_speculative_tokens":2}'
+  tool_call_parser: qwen3_coder
+  reasoning_parser: qwen3
+  override_generation_config: '{"temperature":0.7,"top_p":0.95,"top_k":20,"min_p":0.0,"presence_penalty":0.0,"repetition_penalty":1.0}'
+
+env:
+  VLLM_MARLIN_USE_ATOMIC_ADD: "1"
+  VLLM_HTTP_TIMEOUT_KEEP_ALIVE: "600"
+
+command: |
+  vllm serve {model} \
+    --host {host} \
+    --port {port} \
+    --tensor-parallel-size {tensor_parallel} \
+    --pipeline-parallel-size {pipeline_parallel} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --dtype {dtype} \
+    --kv-cache-dtype {kv_cache_dtype} \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --max-num-seqs {max_num_seqs} \
+    --trust-remote-code \
+    --enable-auto-tool-choice \
+    --tool-call-parser {tool_call_parser} \
+    --reasoning-parser {reasoning_parser} \
+    --attention-backend {attention_backend} \
+    --enable-prefix-caching \
+    --enable-chunked-prefill \
+    --speculative-config '{speculative_config}' \
+    --override-generation-config '{override_generation_config}' \
+    --seed 0
